@@ -76,8 +76,14 @@ export default function CryptoSelector({
 
   // Get all enabled cryptos
   const allCryptos = useMemo(() => {
-    return getEnabledCryptos().filter(crypto => crypto.id !== excludeCryptoId);
-  }, [excludeCryptoId]);
+    const cryptos = getEnabledCryptos().filter(crypto => crypto.id !== excludeCryptoId);
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/CryptoSelector.tsx:allCryptos',message:'allCryptos computed',data:{count:cryptos.length,selectedCryptoId,hasSelectedCrypto:cryptos.some(c=>c.id===selectedCryptoId),firstFewIds:cryptos.slice(0,5).map(c=>c.id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
+    // #endregion
+    
+    return cryptos;
+  }, [excludeCryptoId, selectedCryptoId]);
 
   // Get popular cryptos
   const popularCryptos = useMemo(() => {
@@ -102,7 +108,14 @@ export default function CryptoSelector({
 
   // Get selected crypto
   const selectedCrypto = useMemo(() => {
-    return allCryptos.find(c => c.id === selectedCryptoId) || allCryptos[0];
+    const found = allCryptos.find(c => c.id === selectedCryptoId);
+    const result = found || allCryptos[0];
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/CryptoSelector.tsx:selectedCrypto',message:'selectedCrypto resolved',data:{selectedCryptoId,allCryptosCount:allCryptos.length,found:!!found,resultId:result?.id,resultSymbol:result?.symbol,resultImageUrl:result?.imageUrl,fallbackUsed:!found},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
+    // #endregion
+    
+    return result;
   }, [allCryptos, selectedCryptoId]);
 
   // Get price for a crypto

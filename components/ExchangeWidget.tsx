@@ -542,14 +542,26 @@ export default function ExchangeWidget() {
   const displaySendCrypto = useMemo(() => {
     if (sendCrypto) return sendCrypto;
     const defaults = getValidDefaultCryptoIds();
-    return getCryptoById(defaults.sendId) || null;
-  }, [sendCrypto]);
+    const defaultCrypto = getCryptoById(defaults.sendId);
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/ExchangeWidget.tsx:displaySendCrypto',message:'displaySendCrypto computed',data:{hasSendCrypto:!!sendCrypto,sendCryptoId,sendCryptoImageUrl:sendCrypto?.imageUrl,defaultSendId:defaults.sendId,defaultCryptoImageUrl:defaultCrypto?.imageUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
+    // #endregion
+    
+    return defaultCrypto || null;
+  }, [sendCrypto, sendCryptoId]);
   
   const displayReceiveCrypto = useMemo(() => {
     if (receiveCrypto) return receiveCrypto;
     const defaults = getValidDefaultCryptoIds();
-    return getCryptoById(defaults.receiveId) || null;
-  }, [receiveCrypto]);
+    const defaultCrypto = getCryptoById(defaults.receiveId);
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/ExchangeWidget.tsx:displayReceiveCrypto',message:'displayReceiveCrypto computed',data:{hasReceiveCrypto:!!receiveCrypto,receiveCryptoId,receiveCryptoImageUrl:receiveCrypto?.imageUrl,defaultReceiveId:defaults.receiveId,defaultCryptoImageUrl:defaultCrypto?.imageUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
+    // #endregion
+    
+    return defaultCrypto || null;
+  }, [receiveCrypto, receiveCryptoId]);
 
   return (
     <div className="relative">

@@ -48,11 +48,17 @@ function getSize(className: string): number {
 export default function CryptoIcon({ symbol, image, imageUrl, className = "w-6 h-6" }: CryptoIconProps) {
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(true);
+  const imgRef = useRef<HTMLImageElement | null>(null);
   
   // Reset error state when image changes
   useEffect(() => {
     setError(false);
     setLoading(true);
+    
+    // Check if image is already loaded (cached images)
+    if (imgRef.current && imgRef.current.complete) {
+      setLoading(false);
+    }
   }, [image, imageUrl, symbol]);
   
   const upperSymbol = symbol.toUpperCase();
@@ -154,6 +160,7 @@ export default function CryptoIcon({ symbol, image, imageUrl, className = "w-6 h
           <div className={`absolute inset-0 rounded-full bg-neutral-800 animate-pulse`} style={{ backgroundColor: color + '20' }} />
         )}
         <img
+          ref={imgRef}
           src={nowPaymentsImageUrl}
           alt={symbol}
           className={`object-contain w-full h-full ${loading ? 'opacity-0' : 'opacity-100'} transition-opacity duration-200`}
@@ -164,8 +171,13 @@ export default function CryptoIcon({ symbol, image, imageUrl, className = "w-6 h
             setError(true);
             setLoading(false);
           }}
-          onLoad={() => setLoading(false)}
-          loading="lazy"
+          onLoad={() => {
+            // #region agent log
+            fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/CryptoIcon.tsx:onLoad',message:'Image loaded successfully',data:{symbol,imageUrl:nowPaymentsImageUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+            // #endregion
+            setLoading(false);
+          }}
+          loading="eager"
         />
       </div>
     );

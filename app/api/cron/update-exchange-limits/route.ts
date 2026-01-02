@@ -4,11 +4,14 @@ import { getEnabledCryptos } from '@/lib/supported-cryptos';
 import { upsertExchangeLimits, getUniqueCurrencyPairs, areLimitsStale } from '@/lib/db-exchange-limits';
 
 /**
- * Vercel Cron Job: Update exchange limits every 10 minutes
+ * Vercel Cron Job: Update exchange limits daily (runs at 3 AM UTC)
  * 
  * This endpoint should be called by Vercel Cron (configured in vercel.json)
  * It fetches limits for all supported currency pairs from NOWPayments
  * and updates the exchange_limits table.
+ * 
+ * Note: Vercel Hobby plan limits cron jobs to once per day.
+ * For more frequent updates, consider upgrading to Pro plan or using an external cron service.
  * 
  * Security: Protected by Vercel Cron secret (automatically verified by Vercel)
  */

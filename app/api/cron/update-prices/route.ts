@@ -3,11 +3,14 @@ import { getUniqueCoinGeckoIds, getEnabledCryptos } from '@/lib/supported-crypto
 import { upsertCryptoPrices } from '@/lib/db-crypto-prices';
 
 /**
- * Vercel Cron Job: Update crypto prices every 10 minutes
+ * Vercel Cron Job: Update crypto prices daily (runs at 2 AM UTC)
  * 
  * This endpoint should be called by Vercel Cron (configured in vercel.json)
  * It fetches prices for ALL supported cryptocurrencies from CoinGecko
  * and updates the crypto_prices table.
+ * 
+ * Note: Vercel Hobby plan limits cron jobs to once per day.
+ * For more frequent updates, consider upgrading to Pro plan or using an external cron service.
  * 
  * Security: Protected by Vercel Cron secret (automatically verified by Vercel)
  */
