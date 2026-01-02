@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { logAdminAction } from '@/lib/db-admin-logs';
 import { getOrderByPaymentId, updateOrderStatus } from '@/lib/db-orders';
 import { checkWebhookIdempotency, recordWebhookIdempotency } from '@/lib/db-orders';
+import { type InternalStatus } from '@/lib/status-mapping';
 
 function mapPaymentStatusToOrderStatus(paymentStatus: string): string {
   const statusMap: Record<string, string> = {
@@ -55,7 +56,7 @@ export async function POST(
     const alreadyProcessed = await checkWebhookIdempotency(webhook.payment_id, webhook.payment_status);
     
     // Map status
-    const mappedStatus = mapPaymentStatusToOrderStatus(webhook.payment_status);
+    const mappedStatus = mapPaymentStatusToOrderStatus(webhook.payment_status) as InternalStatus;
 
     // Update order status (idempotency is handled in updateOrderStatus)
     const previousState = { status: order.status };
@@ -64,7 +65,7 @@ export async function POST(
       mappedStatus,
       undefined,
       {
-        source: 'webhook_replay',
+        source: 'webhook',
         paymentStatus: webhook.payment_status,
         skipTransitionCheck: false, // Still respect state guards
       }

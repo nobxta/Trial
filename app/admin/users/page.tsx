@@ -19,7 +19,7 @@ async function getUsers() {
     (users || []).map(async (user) => {
       const { data: orders } = await supabaseAdmin!
         .from('orders')
-        .select('from_amount')
+        .select('from_amount, created_at')
         .eq('user_id', user.id);
 
       const totalOrders = orders?.length || 0;
@@ -37,7 +37,7 @@ async function getUsers() {
           : null;
 
         // Risk indicator
-        let riskLevel: 'low' | 'medium' | 'high' = 'normal';
+        let riskLevel: 'low' | 'medium' | 'high' = 'low';
         if (flagged && flagged.length > 0) {
           riskLevel = 'high';
         } else if (totalOrders > 10) {
@@ -49,7 +49,7 @@ async function getUsers() {
           totalOrders,
           totalVolume,
           lastOrderDate,
-          flagged: flagged && flagged.length > 0,
+          flagged: !!(flagged && flagged.length > 0),
           blocked: user.blocked || false,
           riskLevel,
         };

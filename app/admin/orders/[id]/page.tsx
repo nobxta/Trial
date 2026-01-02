@@ -48,7 +48,7 @@ export default async function OrderDetailPage({
           Order Not Found
         </h1>
         <p style={{ color: 'var(--admin-text-muted)' }}>
-          The order you're looking for doesn't exist.
+          The order you&apos;re looking for doesn&apos;t exist.
         </p>
       </div>
     );

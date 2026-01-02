@@ -57,7 +57,7 @@ export default function IntroductionPage() {
               Cryptocurrency Exchanges
             </h3>
             <p className="text-neutral-400">
-              Integrate MintMove's exchange engine into your platform to offer
+              Integrate MintMove&apos;s exchange engine into your platform to offer
               instant cryptocurrency swaps to your users.
             </p>
           </div>

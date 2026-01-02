@@ -342,7 +342,7 @@ const OrderDetailPanel = memo(function OrderDetailPanel({ data }: OrderDetailPan
               Manual Payout Mode Active
             </p>
             <p className="text-xs" style={{ color: 'var(--admin-text-muted)' }}>
-              Payment confirmed. You must send crypto manually to the user's address, then mark this order as completed.
+              Payment confirmed. You must send crypto manually to the user&apos;s address, then mark this order as completed.
             </p>
             {data.order.toAddress && (
               <p className="text-xs font-mono mt-2 break-all" style={{ color: 'var(--admin-text-primary)' }}>

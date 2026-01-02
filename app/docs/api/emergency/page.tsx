@@ -100,7 +100,7 @@ export default function EmergencyPage() {
           <div className="bg-slate-800/50 backdrop-blur-sm rounded-lg p-4 md:p-6 border border-red-500/20">
             <h3 className="text-xl font-semibold text-white mb-3">Refund</h3>
             <p className="text-slate-300 mb-3">
-              Cancel the order and refund the deposited amount back to the user's
+              Cancel the order and refund the deposited amount back to the user&apos;s
               refund address (or the original sending address if no refund address
               was specified).
             </p>
@@ -147,12 +147,12 @@ export default function EmergencyPage() {
               <tr className="border-b border-slate-800">
                 <td className="py-2 px-2 md:px-4 font-mono text-white text-xs md:text-sm break-all">action</td>
                 <td className="py-2 px-2 md:px-4">Yes</td>
-                <td className="py-2 px-2 md:px-4">One of: "continue", "refund", "recalculate"</td>
+                <td className="py-2 px-2 md:px-4">One of: &quot;continue&quot;, &quot;refund&quot;, &quot;recalculate&quot;</td>
               </tr>
               <tr className="border-b border-slate-800">
                 <td className="py-2 px-2 md:px-4 font-mono text-white text-xs md:text-sm break-all">refund_address</td>
                 <td className="py-2 px-2 md:px-4">No*</td>
-                <td className="py-2 px-2 md:px-4">Refund address (required if action is "refund" and no refund_address was set during order creation)</td>
+                <td className="py-2 px-2 md:px-4">Refund address (required if action is &quot;refund&quot; and no refund_address was set during order creation)</td>
               </tr>
             </tbody>
           </table>

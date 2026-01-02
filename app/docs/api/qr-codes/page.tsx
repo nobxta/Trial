@@ -48,7 +48,7 @@ export default function QRCodesPage() {
               <tr className="border-b border-slate-800">
                 <td className="py-2 px-2 md:px-4 font-mono text-white text-xs md:text-sm break-all">format</td>
                 <td className="py-2 px-2 md:px-4">No</td>
-                <td className="py-2 px-2 md:px-4">Image format: "png" (default), "svg", or "base64"</td>
+                <td className="py-2 px-2 md:px-4">Image format: &quot;png&quot; (default), &quot;svg&quot;, or &quot;base64&quot;</td>
               </tr>
               <tr className="border-b border-slate-800">
                 <td className="py-2 px-2 md:px-4 font-mono text-white text-xs md:text-sm break-all">size</td>
@@ -58,7 +58,7 @@ export default function QRCodesPage() {
               <tr>
                 <td className="py-2 px-2 md:px-4 font-mono text-white text-xs md:text-sm break-all">include_amount</td>
                 <td className="py-2 px-2 md:px-4">No</td>
-                <td className="py-2 px-2 md:px-4">Include amount in QR code: "true" (default) or "false"</td>
+                <td className="py-2 px-2 md:px-4">Include amount in QR code: &quot;true&quot; (default) or &quot;false&quot;</td>
               </tr>
             </tbody>
           </table>
@@ -78,7 +78,7 @@ export default function QRCodesPage() {
               bnb:0x9876...?amount=1.202887
             </code>
             <p className="text-slate-300 text-sm mt-3">
-              <strong>Benefits:</strong> User's wallet automatically fills in the
+              <strong>Benefits:</strong> User&apos;s wallet automatically fills in the
               amount, reducing errors
             </p>
           </div>

@@ -108,12 +108,12 @@ export default function ExchangeRatePage() {
                 <tr className="border-b border-white/5">
                   <td className="py-2 px-2 md:px-4 font-mono text-white text-xs md:text-sm break-all">rate_type</td>
                   <td className="py-2 px-2 md:px-4">No</td>
-                  <td className="py-2 px-2 md:px-4">Rate type: "fixed" or "float" (default: "float")</td>
+                  <td className="py-2 px-2 md:px-4">Rate type: &quot;fixed&quot; or &quot;float&quot; (default: &quot;float&quot;)</td>
                 </tr>
                 <tr className="border-b border-white/5">
                   <td className="py-2 px-2 md:px-4 font-mono text-white text-xs md:text-sm break-all">direction</td>
                   <td className="py-2 px-2 md:px-4">No</td>
-                  <td className="py-2 px-2 md:px-4">"from" (default) or "to" - direction of amount calculation</td>
+                  <td className="py-2 px-2 md:px-4">&quot;from&quot; (default) or &quot;to&quot; - direction of amount calculation</td>
                 </tr>
               </tbody>
             </table>
@@ -133,7 +133,7 @@ export default function ExchangeRatePage() {
           <div>
             <h3 className="text-base md:text-lg font-semibold text-white mb-2">direction=from (Default)</h3>
             <p className="text-neutral-400 mb-2">
-              Calculate how much you'll receive when sending a specific amount:
+              Calculate how much you&apos;ll receive when sending a specific amount:
             </p>
             <pre className="bg-white/[0.02] rounded-lg p-3 md:p-4 overflow-x-auto -mx-3 md:mx-0 border border-white/5">
               <code className="text-xs md:text-sm text-neutral-400 whitespace-pre-wrap break-words">{`GET /v1/rate?from=BTC&to=USDT&amount=0.1&direction=from
@@ -147,7 +147,7 @@ Response: {
 }`}</code>
             </pre>
             <p className="text-neutral-400 text-sm mt-2">
-              "If I send 0.1 BTC, how much USDT will I receive?"
+              &quot;If I send 0.1 BTC, how much USDT will I receive?&quot;
             </p>
           </div>
           <div>
@@ -167,7 +167,7 @@ Response: {
 }`}</code>
             </pre>
             <p className="text-neutral-400 text-sm mt-2">
-              "How much BTC do I need to send to receive 1000 USDT?"
+              &quot;How much BTC do I need to send to receive 1000 USDT?&quot;
             </p>
           </div>
         </div>

@@ -5,7 +5,7 @@ import { getAuthUser } from '@/lib/auth';
 import { createOrder } from '@/lib/db-orders';
 import { validateExchangeRequest, validatePaymentRequest } from '@/lib/validation';
 import { getPaymentMode } from '@/lib/payment-mode';
-import { getSandboxCaseFromEnv } from '@/lib/sandbox-case';
+import { getSandboxCaseFromEnv, type SandboxCase } from '@/lib/sandbox-case';
 
 export async function POST(request: NextRequest) {
   try {
@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
       };
 
       // Sandbox-specific: add case parameter from environment variable (ONLY in sandbox mode)
-      let resolvedSandboxCase: string | undefined;
+      let resolvedSandboxCase: SandboxCase | undefined;
       if (currentPaymentMode === 'sandbox') {
         resolvedSandboxCase = getSandboxCaseFromEnv();
         paymentParams.case = resolvedSandboxCase;
@@ -226,7 +226,7 @@ export async function POST(request: NextRequest) {
       };
 
       // Sandbox-specific: add case parameter from environment variable (ONLY in sandbox mode)
-      let resolvedSandboxCase: string | undefined;
+      let resolvedSandboxCase: SandboxCase | undefined;
       if (currentPaymentMode === 'sandbox') {
         resolvedSandboxCase = getSandboxCaseFromEnv();
         paymentParams.case = resolvedSandboxCase;

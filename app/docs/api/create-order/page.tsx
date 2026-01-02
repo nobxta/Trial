@@ -73,7 +73,7 @@ export default function CreateOrderPage() {
               <tr className="border-b border-white/5">
                 <td className="py-2 px-2 md:px-4 font-mono text-white text-xs md:text-sm break-all">rate_type</td>
                 <td className="py-2 px-2 md:px-4">String</td>
-                <td className="py-2 px-2 md:px-4">"fixed" or "float" - rate type for the order</td>
+                <td className="py-2 px-2 md:px-4">&quot;fixed&quot; or &quot;float&quot; - rate type for the order</td>
               </tr>
               <tr>
                 <td className="py-2 px-2 md:px-4 font-mono text-white text-xs md:text-sm break-all">destination</td>
@@ -321,7 +321,7 @@ X-API-TIMESTAMP: 1706284800
             <li className="flex items-start gap-3">
               <span className="text-blue-400 mt-1">•</span>
               <span>
-                Network compatibility must be valid (e.g., can't use TRC20 for BTC)
+                Network compatibility must be valid (e.g., can&apos;t use TRC20 for BTC)
               </span>
             </li>
             <li className="flex items-start gap-3">

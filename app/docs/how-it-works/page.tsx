@@ -70,7 +70,7 @@ export default function HowItWorksPage() {
                 <p className="text-neutral-400">
                   Create a new exchange order using <code className="bg-white/[0.02] px-2 py-1 rounded text-sm">/v1/order/create</code>.
                   Provide the source and destination currencies, networks, amount,
-                  rate type, and destination address. You'll receive a unique order
+                  rate type, and destination address. You&apos;ll receive a unique order
                   ID and a deposit address where the user should send funds.
                 </p>
               </div>
@@ -87,7 +87,7 @@ export default function HowItWorksPage() {
                 <p className="text-neutral-400">
                   The user sends cryptocurrency to the deposit address provided in the
                   order. You can display a QR code (generated via <code className="bg-white/[0.02] px-2 py-1 rounded text-sm">/v1/order/{`{id}`}/qr</code>)
-                  to make this easier. The order status remains "NEW" until payment
+                  to make this easier. The order status remains &quot;NEW&quot; until payment
                   is detected.
                 </p>
               </div>
@@ -103,7 +103,7 @@ export default function HowItWorksPage() {
                 </h3>
                 <p className="text-neutral-400">
                   Our system monitors the blockchain and detects when payment is
-                  received. The order status changes to "PENDING" and we begin
+                  received. The order status changes to &quot;PENDING&quot; and we begin
                   tracking blockchain confirmations. The number of required confirmations
                   depends on the network (e.g., 12 for ERC20, 20 for TRC20).
                 </p>
@@ -119,7 +119,7 @@ export default function HowItWorksPage() {
                   Exchange Processing
                 </h3>
                 <p className="text-neutral-400">
-                  Once confirmations are complete, the order status changes to "EXCHANGE".
+                  Once confirmations are complete, the order status changes to &quot;EXCHANGE&quot;.
                   Our system processes the exchange, converting the deposited currency
                   to the destination currency. For float rate orders, the final rate
                   is calculated at this stage.
@@ -136,7 +136,7 @@ export default function HowItWorksPage() {
                   Withdrawal
                 </h3>
                 <p className="text-neutral-400">
-                  After exchange, the order status becomes "WITHDRAW". Funds are sent
+                  After exchange, the order status becomes &quot;WITHDRAW&quot;. Funds are sent
                   to the destination address provided during order creation. The
                   withdrawal transaction is broadcast to the destination blockchain.
                 </p>
@@ -153,7 +153,7 @@ export default function HowItWorksPage() {
                 </h3>
                 <p className="text-neutral-400">
                   Once the withdrawal transaction is confirmed, the order status changes
-                  to "DONE". The exchange is complete and funds are in the user's wallet.
+                  to &quot;DONE&quot;. The exchange is complete and funds are in the user&apos;s wallet.
                   You can verify the transaction using the withdrawal transaction hash.
                 </p>
               </div>
@@ -207,7 +207,7 @@ export default function HowItWorksPage() {
         <h2 className="text-xl md:text-2xl font-semibold text-white">Emergency Situations</h2>
         <p className="text-sm md:text-base text-neutral-400 leading-relaxed">
           If an unexpected situation occurs (underpayment, overpayment, rate slippage,
-          etc.), the order enters "EMERGENCY" status. The user must choose an action:
+          etc.), the order enters &quot;EMERGENCY&quot; status. The user must choose an action:
         </p>
         <div className="bg-white/[0.02] backdrop-blur-sm rounded-lg p-4 md:p-6 border border-white/5">
           <ul className="space-y-3 text-sm md:text-base text-neutral-400">

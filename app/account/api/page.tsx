@@ -203,7 +203,7 @@ export default function ApiManagementPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              <p className="text-neutral-400">You don't have an API key yet.</p>
+              <p className="text-neutral-400">You don&apos;t have an API key yet.</p>
               <button
                 onClick={handleGenerate}
                 disabled={generating}
@@ -253,7 +253,7 @@ export default function ApiManagementPage() {
               <ul className="text-neutral-300 text-sm space-y-1 list-disc list-inside">
                 <li>Never share your API key with anyone</li>
                 <li>Do not commit your API key to version control</li>
-                <li>Regenerate your key immediately if it's compromised</li>
+                <li>Regenerate your key immediately if it&apos;s compromised</li>
                 <li>Use environment variables to store your API key in production</li>
               </ul>
             </div>

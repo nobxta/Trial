@@ -45,18 +45,20 @@ export async function POST(request: NextRequest) {
     await setPaymentMode(mode as PaymentMode, admin.adminId);
 
     // Log admin action
-    await logAdminAction({
-      adminId: admin.adminId,
-      action: 'change_payment_mode',
-      targetType: 'system',
-      targetId: 'payment_mode',
-      details: {
-        previous_mode: previousMode,
-        new_mode: mode,
-      },
-      ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown',
-      userAgent: request.headers.get('user-agent') || 'unknown',
-    });
+    await logAdminAction(
+      admin.adminId,
+      'change_payment_mode',
+      'system',
+      {
+        resourceId: 'payment_mode',
+        details: {
+          previous_mode: previousMode,
+          new_mode: mode,
+        },
+        ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown',
+        userAgent: request.headers.get('user-agent') || 'unknown',
+      }
+    );
 
     return NextResponse.json({
       success: true,

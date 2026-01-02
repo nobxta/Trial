@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isIPBlocked, getClientIP } from './ip-blocking';
 
+// Re-export getClientIP for convenience
+export { getClientIP };
+
 /**
  * Middleware to check if IP is blocked
  * Use this in your API routes or middleware.ts

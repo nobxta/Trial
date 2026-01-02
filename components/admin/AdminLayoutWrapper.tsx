@@ -15,17 +15,17 @@ export default function AdminLayoutWrapper({ admin, children }: AdminLayoutWrapp
   const router = useRouter();
   const isSignInPage = pathname === '/admin/signin';
 
-  // If on signin page, render without layout
-  if (isSignInPage) {
-    return <>{children}</>;
-  }
-
   // If not authenticated and not on signin, redirect to 404
   useEffect(() => {
     if (!admin && !isSignInPage) {
       router.push('/admin/not-found');
     }
   }, [admin, isSignInPage, router]);
+
+  // If on signin page, render without layout
+  if (isSignInPage) {
+    return <>{children}</>;
+  }
 
   // If not authenticated, show nothing (redirecting)
   if (!admin) {

@@ -7,7 +7,7 @@
  * To add a new asset, edit this file ONLY.
  */
 
-import supportedAssetsData from '@/data/supportedAssets.json';
+import supportedAssetsData from '../data/supportedAssets.json';
 
 export interface SupportedAsset {
   symbol: string;

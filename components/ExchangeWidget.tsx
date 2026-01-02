@@ -991,19 +991,6 @@ export default function ExchangeWidget() {
                 // The button will remain disabled if validation fails
               }
             }}
-            disabled={
-              !sendAmount ||
-              isNaN(parseFloat(sendAmount)) ||
-              parseFloat(sendAmount) <= 0 ||
-              !!amountValidationError ||
-              !destination.trim() ||
-              !isDestinationValid ||
-              exchangeRate === null ||
-              limitsLoading ||
-              (!exchangeLimits && !limitsError) || // Disable if limits not loaded yet (unless there's an error)
-              !!exchangeRateError ||
-              !!destinationValidationError
-            }
             className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-3 sm:py-4 text-sm sm:text-base rounded-lg sm:rounded-xl transition-all shadow-lg shadow-blue-900/20 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-600"
           >
             Exchange Now

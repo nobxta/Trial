@@ -85,7 +85,7 @@ export default function SecurityPage() {
               <span className="text-red-400 mt-1">•</span>
               <span>
                 <strong className="text-white">Certificate Validation</strong> - Always
-                validate SSL certificates (don't disable certificate verification)
+                validate SSL certificates (don&apos;t disable certificate verification)
               </span>
             </li>
           </ul>
@@ -114,7 +114,7 @@ export default function SecurityPage() {
             <li className="flex items-start gap-3">
               <span className="text-red-400 mt-1">•</span>
               <span>
-                Add your server's static IP addresses (both IPv4 and IPv6 if applicable)
+                Add your server&apos;s static IP addresses (both IPv4 and IPv6 if applicable)
               </span>
             </li>
             <li className="flex items-start gap-3">
@@ -158,7 +158,7 @@ export default function SecurityPage() {
               <span className="text-red-400 mt-1">•</span>
               <span>
                 <strong className="text-white">Validate server clock</strong> - Ensure your
-                server's clock is synchronized with NTP to avoid timestamp errors
+                server&apos;s clock is synchronized with NTP to avoid timestamp errors
               </span>
             </li>
             <li className="flex items-start gap-3">
@@ -186,7 +186,7 @@ export default function SecurityPage() {
           </ul>
           <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-4 mt-4">
             <p className="text-yellow-200 text-xs md:text-sm">
-              <strong>Tip:</strong> If you're getting timestamp errors, check your server's
+              <strong>Tip:</strong> If you&apos;re getting timestamp errors, check your server&apos;s
               system time and timezone settings.
             </p>
           </div>
@@ -359,7 +359,7 @@ export default function SecurityPage() {
             <li className="flex items-start gap-3">
               <span className="text-red-400 mt-1">•</span>
               <span>
-                <strong className="text-white">Sanitize error messages</strong> - Don't
+                <strong className="text-white">Sanitize error messages</strong> - Don&apos;t
                 expose sensitive information in error messages to users
               </span>
             </li>

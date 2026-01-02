@@ -99,7 +99,7 @@ export default function AuthenticationPage() {
       <section className="space-y-4">
         <h2 className="text-xl md:text-2xl font-semibold text-white">Signature Generation</h2>
         <p className="text-sm md:text-base text-neutral-400 leading-relaxed">
-          The signature is generated using HMAC-SHA256. Here's how it works:
+          The signature is generated using HMAC-SHA256. Here&apos;s how it works:
         </p>
         <div className="bg-white/[0.02] backdrop-blur-sm rounded-lg p-4 md:p-6 border border-white/5 space-y-4">
           <div>
@@ -111,7 +111,7 @@ export default function AuthenticationPage() {
               <li>HTTP method (uppercase): <code className="bg-white/[0.02] px-2 py-1 rounded">GET</code> or <code className="bg-white/[0.02] px-2 py-1 rounded">POST</code></li>
               <li>Request path: <code className="bg-white/[0.02] px-2 py-1 rounded">/v1/order/create</code></li>
               <li>Query string (if GET): <code className="bg-white/[0.02] px-2 py-1 rounded">?from=BTC&to=USDT</code></li>
-              <li>Request body (if POST, JSON stringified): <code className="bg-white/[0.02] px-2 py-1 rounded">{"{"}"from":"BTC"{"}"}</code></li>
+              <li>Request body (if POST, JSON stringified): <code className="bg-white/[0.02] px-2 py-1 rounded">{`{"from":"BTC"}`}</code></li>
               <li>Unix timestamp: <code className="bg-white/[0.02] px-2 py-1 rounded">1706284800</code></li>
             </ol>
           </div>
@@ -130,7 +130,7 @@ export default function AuthenticationPage() {
               Convert the binary hash to a hexadecimal string (lowercase):
             </p>
             <code className="block p-2 md:p-3 bg-white/[0.02] rounded text-blue-300 text-xs md:text-sm break-all">
-              hex_signature = signature.toString('hex')
+              hex_signature = signature.toString(&apos;hex&apos;)
             </code>
           </div>
         </div>
@@ -255,12 +255,12 @@ $headers = [
         <h2 className="text-xl md:text-2xl font-semibold text-white">Timestamp Validation</h2>
         <p className="text-sm md:text-base text-neutral-400 leading-relaxed">
           Timestamps are validated to prevent replay attacks. Your request
-          timestamp must be within 5 minutes of the server's current time.
+          timestamp must be within 5 minutes of the server&apos;s current time.
           Requests with timestamps outside this window will be rejected.
         </p>
         <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-3 md:p-4">
           <p className="text-red-200 text-xs md:text-sm">
-            <strong>Important:</strong> Ensure your server's clock is synchronized
+            <strong>Important:</strong> Ensure your server&apos;s clock is synchronized
             with NTP to avoid timestamp validation failures.
           </p>
         </div>

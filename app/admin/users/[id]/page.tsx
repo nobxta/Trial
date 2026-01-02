@@ -99,7 +99,7 @@ export default async function AdminUserDetailPage({
             User Not Found
           </h1>
           <p style={{ color: 'var(--admin-text-muted)' }}>
-            The user you're looking for doesn't exist.
+            The user you&apos;re looking for doesn&apos;t exist.
           </p>
         </div>
       </div>

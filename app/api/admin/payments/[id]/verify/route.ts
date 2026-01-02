@@ -49,7 +49,7 @@ export async function POST(
 
     if (mappedStatus !== order.status) {
       await updateOrderStatus(order.order_id, mappedStatus, undefined, {
-        source: 'manual_verify',
+        source: 'admin',
         skipTransitionCheck: true,
       });
     }

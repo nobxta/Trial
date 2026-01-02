@@ -130,7 +130,7 @@ export default function NotificationsPage() {
             <ol className="list-decimal list-inside space-y-2 text-slate-300 ml-4">
               <li>Log in to your MintMove account</li>
               <li>Go to Dashboard → Settings → Notifications</li>
-              <li>Enable "Email Notifications"</li>
+              <li>Enable &quot;Email Notifications&quot;</li>
               <li>Select which events you want to be notified about</li>
               <li>Save your preferences</li>
             </ol>
@@ -162,7 +162,7 @@ export default function NotificationsPage() {
             <li className="flex items-start gap-3">
               <span className="text-red-400 mt-1">•</span>
               <span>
-                <strong className="text-white">Per-Order:</strong> Don't include
+                <strong className="text-white">Per-Order:</strong> Don&apos;t include
                 <code className="bg-slate-900 px-2 py-1 rounded text-xs">callback_url</code> when creating orders
                 (only affects that specific order)
               </span>

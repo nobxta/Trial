@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabaseAdmin!
       .from('users')
-      .select('id, email, email_verified, created_at')
+      .select('id, email, email_verified, created_at, blocked')
       .order('created_at', { ascending: false });
 
     if (email) {
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
         const isBlocked = user.blocked || false;
 
         // Risk indicator: flagged = high, high activity (>10 orders) = medium, normal = low
-        let riskLevel = 'normal';
+        let riskLevel: 'low' | 'medium' | 'high' = 'low';
         if (flagged && flagged.length > 0) {
           riskLevel = 'high';
         } else if (totalOrders > 10) {

@@ -48,12 +48,12 @@ export default function XMLRatesPage() {
               <tr className="border-b border-slate-800">
                 <td className="py-2 px-2 md:px-4 font-mono text-white text-xs md:text-sm break-all">rate_type</td>
                 <td className="py-2 px-2 md:px-4">No</td>
-                <td className="py-2 px-2 md:px-4">"fixed" or "float" (default: "float")</td>
+                <td className="py-2 px-2 md:px-4">&quot;fixed&quot; or &quot;float&quot; (default: &quot;float&quot;)</td>
               </tr>
               <tr>
                 <td className="py-2 px-2 md:px-4 font-mono text-white text-xs md:text-sm break-all">base</td>
                 <td className="py-2 px-2 md:px-4">No</td>
-                <td className="py-2 px-2 md:px-4">Base currency for rates (default: "USDT")</td>
+                <td className="py-2 px-2 md:px-4">Base currency for rates (default: &quot;USDT&quot;)</td>
               </tr>
             </tbody>
           </table>
@@ -142,7 +142,7 @@ export default function XMLRatesPage() {
               </tr>
               <tr className="border-b border-slate-800">
                 <td className="py-2 px-2 md:px-4 font-mono text-white text-xs md:text-sm break-all">rate_type</td>
-                <td className="py-2 px-2 md:px-4">Type of rates: "fixed" or "float"</td>
+                <td className="py-2 px-2 md:px-4">Type of rates: &quot;fixed&quot; or &quot;float&quot;</td>
               </tr>
               <tr className="border-b border-slate-800">
                 <td className="py-2 px-2 md:px-4 font-mono text-white text-xs md:text-sm break-all">base</td>
@@ -262,7 +262,7 @@ export default function XMLRatesPage() {
           </ul>
           <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-4 mt-4">
             <p className="text-yellow-200 text-xs md:text-sm">
-              <strong>Note:</strong> Don't poll this endpoint more frequently than every
+              <strong>Note:</strong> Don&apos;t poll this endpoint more frequently than every
               10 seconds. Use the timestamp field to detect when rates have actually changed.
             </p>
           </div>
