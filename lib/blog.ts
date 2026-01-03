@@ -16,8 +16,8 @@ export interface BlogPost {
 export type BlogCategory = 'guides' | 'news' | 'currencies' | 'all';
 export type BlogTab = 'recent' | 'guides' | 'news' | 'about-cryptocurrencies' | 'exchange-tutorials';
 
-// Read blog posts from JSON file using require (works in both server and client contexts)
-const blogPostsData = require('../data/blog-posts.json');
+// Import blog posts from TypeScript file (works in both server and client contexts)
+import { blogPostsData } from '../data/blog-posts';
 
 // Convert dates and ensure type safety
 const blogPosts: BlogPost[] = blogPostsData.map((post: any) => ({
