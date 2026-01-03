@@ -1,4 +1,4 @@
-import blogPostsData from '@/data/blog-posts.json';
+import blogPostsData from '../data/blog-posts.json';
 
 export interface BlogPost {
   id: string;
