@@ -37,3 +37,8 @@ next-env.d.ts
 
 # database
 /data
+# Allow required JSON config files
+!/data/supportedAssets.json
+!/data/supported-cryptos.json
+!/data/supportedCoins.json
+!/data/coingeckoMap.json

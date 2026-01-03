@@ -1,0 +1,66 @@
+[
+  {
+    "id": "btc",
+    "symbol": "BTC",
+    "name": "Bitcoin",
+    "coingeckoId": "bitcoin",
+    "network": "MAINNET",
+    "image": "/coins/btc.png",
+    "enabled": true
+  },
+  {
+    "id": "eth",
+    "symbol": "ETH",
+    "name": "Ethereum",
+    "coingeckoId": "ethereum",
+    "network": "MAINNET",
+    "image": "/coins/eth.png",
+    "enabled": true
+  },
+  {
+    "id": "usdttrc20",
+    "symbol": "USDT",
+    "name": "Tether",
+    "coingeckoId": "tether",
+    "network": "TRC20",
+    "image": "/coins/usdt.png",
+    "enabled": true
+  },
+  {
+    "id": "usdterc20",
+    "symbol": "USDT",
+    "name": "Tether",
+    "coingeckoId": "tether",
+    "network": "ERC20",
+    "image": "/coins/usdt.png",
+    "enabled": true
+  },
+  {
+    "id": "usdtbsc",
+    "symbol": "USDT",
+    "name": "Tether",
+    "coingeckoId": "tether",
+    "network": "BSC",
+    "image": "/coins/usdt.png",
+    "enabled": true
+  },
+  {
+    "id": "sol",
+    "symbol": "SOL",
+    "name": "Solana",
+    "coingeckoId": "solana",
+    "network": "MAINNET",
+    "image": "/coins/sol.png",
+    "enabled": true
+  },
+  {
+    "id": "ton",
+    "symbol": "TON",
+    "name": "Toncoin",
+    "coingeckoId": "the-open-network",
+    "network": "MAINNET",
+    "image": "/coins/ton.png",
+    "enabled": true
+  }
+]
+
