@@ -266,9 +266,6 @@ export default function ExchangeWidget() {
       // Reset locked rate if pair changed or in float mode or no locked rate exists
       if (pairChanged || orderType === "float" || lockedExchangeRate === null) {
         setLockedExchangeRate(rate);
-        // #region agent log
-        fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ExchangeWidget.tsx:useEffect',message:'Rate updated',data:{rate,orderType,pairChanged,reason:pairChanged?'pair changed':orderType==='float'?'float mode':'initial'},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'FIXED_FLOAT'})}).catch(()=>{});
-        // #endregion
       }
     } else {
       setLiveExchangeRate(null);
@@ -277,15 +274,9 @@ export default function ExchangeWidget() {
   
   // Lock rate when switching to fixed mode
   const handleOrderTypeChange = useCallback((newType: "fixed" | "float") => {
-    // #region agent log
-    fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ExchangeWidget.tsx:handleOrderTypeChange',message:'Order type changing',data:{from:orderType,to:newType,currentLiveRate:liveExchangeRate,currentLockedRate:lockedExchangeRate},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'FIXED_FLOAT'})}).catch(()=>{});
-    // #endregion
     if (newType === "fixed" && liveExchangeRate !== null) {
       // Lock the current live rate when switching to fixed
       setLockedExchangeRate(liveExchangeRate);
-      // #region agent log
-      fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ExchangeWidget.tsx:handleOrderTypeChange',message:'Rate locked for fixed mode',data:{lockedRate:liveExchangeRate},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'FIXED_FLOAT'})}).catch(()=>{});
-      // #endregion
     }
     setOrderType(newType);
   }, [orderType, liveExchangeRate, lockedExchangeRate]);
@@ -544,25 +535,14 @@ export default function ExchangeWidget() {
     if (sendCrypto) return sendCrypto;
     const defaults = getValidDefaultCryptoIds();
     const defaultCrypto = getCryptoById(defaults.sendId);
-    const defaultCryptoImageUrl = defaultCrypto?.imageUrl;
-    
-    // #region agent log
-    fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/ExchangeWidget.tsx:displaySendCrypto',message:'displaySendCrypto computed',data:{hasSendCrypto:!!sendCrypto,sendCryptoId,sendCryptoImageUrl,defaultSendId:defaults.sendId,defaultCryptoImageUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
-    // #endregion
     
     return defaultCrypto ?? null;
   }, [sendCrypto, sendCryptoId]);
   
   const displayReceiveCrypto = useMemo((): SupportedCrypto | null => {
-    const receiveCryptoImageUrl = receiveCrypto?.imageUrl;
     if (receiveCrypto) return receiveCrypto;
     const defaults = getValidDefaultCryptoIds();
     const defaultCrypto = getCryptoById(defaults.receiveId);
-    const defaultCryptoImageUrl = defaultCrypto?.imageUrl;
-    
-    // #region agent log
-    fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/ExchangeWidget.tsx:displayReceiveCrypto',message:'displayReceiveCrypto computed',data:{hasReceiveCrypto:!!receiveCrypto,receiveCryptoId,receiveCryptoImageUrl,defaultReceiveId:defaults.receiveId,defaultCryptoImageUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
-    // #endregion
 
     return defaultCrypto ?? null;
   }, [receiveCrypto, receiveCryptoId]);

@@ -64,35 +64,18 @@ export default function OrdersPage() {
         params.append("status", statusFilter);
       }
 
-      // #region agent log
-      fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/account/orders/page.tsx:loadOrders',message:'Fetching orders',data:{url:`/api/account/orders?${params}`,statusFilter,currentPage},timestamp:Date.now(),sessionId:'debug-session',runId:'order-history',hypothesisId:'ORDERS_NOT_SHOWING'})}).catch(()=>{});
-      // #endregion
-
       const res = await fetch(`/api/account/orders?${params}`);
       const data = await res.json();
 
-      // #region agent log
-      fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/account/orders/page.tsx:loadOrders',message:'Orders API response',data:{success:data.success,ordersCount:data.orders?.length||0,hasOrders:Array.isArray(data.orders),error:data.error,status:res.status},timestamp:Date.now(),sessionId:'debug-session',runId:'order-history',hypothesisId:'ORDERS_NOT_SHOWING'})}).catch(()=>{});
-      // #endregion
-
       if (data.success) {
         setOrders(data.orders || []);
-        // #region agent log
-        fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/account/orders/page.tsx:loadOrders',message:'Orders set in state',data:{ordersCount:data.orders?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'order-history',hypothesisId:'ORDERS_NOT_SHOWING'})}).catch(()=>{});
-        // #endregion
       } else {
         console.error("Failed to load orders:", data.error);
         setOrders([]);
-        // #region agent log
-        fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/account/orders/page.tsx:loadOrders',message:'Orders API returned error',data:{error:data.error},timestamp:Date.now(),sessionId:'debug-session',runId:'order-history',hypothesisId:'ORDERS_NOT_SHOWING'})}).catch(()=>{});
-        // #endregion
       }
     } catch (error: any) {
       console.error("Failed to load orders:", error);
       setOrders([]);
-      // #region agent log
-      fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/account/orders/page.tsx:loadOrders',message:'Orders fetch exception',data:{error:error?.message||String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'order-history',hypothesisId:'ORDERS_NOT_SHOWING'})}).catch(()=>{});
-      // #endregion
     } finally {
       setLoading(false);
     }

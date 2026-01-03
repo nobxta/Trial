@@ -362,12 +362,6 @@ export default function AboutPage() {
                   {/* Icon container with glow effect */}
                   <div className="relative w-14 h-14 sm:w-16 sm:h-16 flex items-center justify-center">
                     <div className="absolute inset-0 bg-blue-500/20 rounded-full blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                    {/* #region agent log */}
-                    {(() => {
-                      fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/about/page.tsx:CryptoIcon',message:'About page CryptoIcon props',data:{currencyId:currency.id,currencySymbol:currency.symbol,currencyImageUrl:currency.imageUrl,currencyName:currency.name,currencyNetwork:currency.network},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-                      return null;
-                    })()}
-                    {/* #endregion */}
                     <CryptoIcon 
                       symbol={currency.symbol} 
                       imageUrl={currency.imageUrl}

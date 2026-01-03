@@ -45,9 +45,6 @@ export function useCryptoPrices(
   }, [prices]);
 
   const fetchPrices = useCallback(async () => {
-      // #region agent log
-      fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useCryptoPrices.ts:42',message:'fetchPrices called',data:{timestamp:Date.now(),coinIds:coinIds?.join(',')||'all'},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A,E'})}).catch(()=>{});
-      // #endregion
     try {
       setError(null);
       // Only set loading to true on initial fetch (when no prices exist)
@@ -57,9 +54,6 @@ export function useCryptoPrices(
         setLoading(true);
       }
       
-      // #region agent log
-      fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useCryptoPrices.ts:40',message:'Fetching prices API',data:{url:'/api/crypto/prices'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       // Build URL with optional coinIds parameter
       const url = coinIds && coinIds.length > 0
         ? `/api/crypto/prices?ids=${coinIds.join(',')}`
@@ -67,22 +61,13 @@ export function useCryptoPrices(
       
       const response = await fetch(url);
       
-      // #region agent log
-      fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useCryptoPrices.ts:44',message:'API response received',data:{ok:response.ok,status:response.status,statusText:response.statusText},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B,C'})}).catch(()=>{});
-      // #endregion
       if (!response.ok) {
         throw new Error(`Failed to fetch prices: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json();
       
-      // #region agent log
-      fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useCryptoPrices.ts:52',message:'Prices data received',data:{pricesCount:Object.keys(data.prices||{}).length,hasError:!!data.error},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       if (isMountedRef.current) {
-        // #region agent log
-        fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useCryptoPrices.ts:55',message:'Updating prices state',data:{newPricesCount:Object.keys(data.prices||{}).length,oldPricesCount:Object.keys(prices).length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
         // Merge new prices with existing ones to keep previous data
         const mergedPrices = { ...pricesRef.current, ...(data.prices || {}) };
         setPrices(mergedPrices);
@@ -90,9 +75,6 @@ export function useCryptoPrices(
         setLoading(false);
       }
     } catch (err) {
-      // #region agent log
-      fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useCryptoPrices.ts:62',message:'fetchPrices error',data:{error:err instanceof Error?err.message:String(err)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B,C'})}).catch(()=>{});
-      // #endregion
       if (isMountedRef.current) {
         const error = err instanceof Error ? err : new Error('Failed to fetch crypto prices');
         setError(error);
@@ -112,9 +94,6 @@ export function useCryptoPrices(
 
   // Initial fetch and auto-refresh setup
   useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useCryptoPrices.ts:72',message:'useEffect running',data:{autoRefresh,refreshInterval},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,E'})}).catch(()=>{});
-    // #endregion
     isMountedRef.current = true;
     fetchPrices();
 

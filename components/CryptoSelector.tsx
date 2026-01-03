@@ -77,11 +77,6 @@ export default function CryptoSelector({
   // Get all enabled cryptos
   const allCryptos = useMemo(() => {
     const cryptos = getEnabledCryptos().filter(crypto => crypto.id !== excludeCryptoId);
-    
-    // #region agent log
-    fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/CryptoSelector.tsx:allCryptos',message:'allCryptos computed',data:{count:cryptos.length,selectedCryptoId,hasSelectedCrypto:cryptos.some(c=>c.id===selectedCryptoId),firstFewIds:cryptos.slice(0,5).map(c=>c.id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
-    // #endregion
-    
     return cryptos;
   }, [excludeCryptoId, selectedCryptoId]);
 
@@ -110,11 +105,6 @@ export default function CryptoSelector({
   const selectedCrypto = useMemo(() => {
     const found = allCryptos.find(c => c.id === selectedCryptoId);
     const result = found || allCryptos[0];
-    
-    // #region agent log
-    fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/CryptoSelector.tsx:selectedCrypto',message:'selectedCrypto resolved',data:{selectedCryptoId,allCryptosCount:allCryptos.length,found:!!found,resultId:result?.id,resultSymbol:result?.symbol,resultImageUrl:result?.imageUrl,fallbackUsed:!found},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
-    // #endregion
-    
     return result;
   }, [allCryptos, selectedCryptoId]);
 
@@ -285,12 +275,6 @@ export default function CryptoSelector({
       >
         {/* LEFT: Logo */}
         <div className="flex-shrink-0 relative">
-          {/* #region agent log */}
-          {(() => {
-            fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/CryptoSelector.tsx:renderCryptoOption',message:'CryptoIcon props in selector',data:{cryptoSymbol:crypto.symbol,cryptoId:crypto.id,cryptoImageUrl:crypto.imageUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-            return null;
-          })()}
-          {/* #endregion */}
           <CryptoIcon 
             symbol={crypto.symbol} 
             imageUrl={crypto.imageUrl}

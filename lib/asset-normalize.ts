@@ -26,25 +26,13 @@ export function normalizeAsset(rawCode: string): NormalizedAsset | null {
 
   const lowerCode = rawCode.toLowerCase().trim();
   
-  // #region agent log
-  fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'lib/asset-normalize.ts:normalizeAsset',message:'normalizeAsset entry',data:{rawCode,lowerCode},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-  // #endregion
-  
   // Get all supported asset networks
   const supportedNetworks = getSupportedAssetNetworks();
-  
-  // #region agent log
-  fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'lib/asset-normalize.ts:normalizeAsset',message:'Searching supported networks',data:{lowerCode,supportedNetworksCount:supportedNetworks.length,firstFewIds:supportedNetworks.slice(0,5).map(a=>a.id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-  // #endregion
   
   // Try to find exact match first
   const exactMatch = supportedNetworks.find(
     asset => asset.id.toLowerCase() === lowerCode
   );
-  
-  // #region agent log
-  fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'lib/asset-normalize.ts:normalizeAsset',message:'Exact match result',data:{hasExactMatch:!!exactMatch,exactMatchId:exactMatch?.id,exactMatchSymbol:exactMatch?.symbol,exactMatchImageUrl:exactMatch?.imageUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-  // #endregion
   
   if (exactMatch) {
     return {

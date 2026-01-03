@@ -65,10 +65,6 @@ export default function CryptoIcon({ symbol, image, imageUrl, className = "w-6 h
   const upperSymbol = symbol.toUpperCase();
   const lowerSymbol = symbol.toLowerCase();
   
-  // #region agent log
-  fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/CryptoIcon.tsx:render',message:'CryptoIcon render',data:{symbol,upperSymbol,lowerSymbol,hasImageUrl:!!imageUrl,imageUrl,hasImage:!!image,image,hasImageId:!!cryptocompareImageIds[upperSymbol]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,D'})}).catch(()=>{});
-  // #endregion
-  
   // Priority 1: Use imageUrl (NOWPayments hosted SVG) if provided
   // Priority 2: Use provided image (from JSON, local path)
   // Priority 3: Try local PNG from /coins/{symbol}.png
@@ -79,10 +75,6 @@ export default function CryptoIcon({ symbol, image, imageUrl, className = "w-6 h
   const logoUrl = imageId 
     ? `https://www.cryptocompare.com/media/${imageId}/${lowerSymbol}.png`
     : null;
-  
-  // #region agent log
-  fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/CryptoIcon.tsx:iconResolution',message:'Icon resolution paths',data:{nowPaymentsImageUrl,localImagePath,logoUrl,willUseNowPayments:!!nowPaymentsImageUrl,willUseLocal:!nowPaymentsImageUrl&&localImagePath,willUseCryptoCompare:!nowPaymentsImageUrl&&!localImagePath&&logoUrl,willUseFallback:!nowPaymentsImageUrl&&!localImagePath&&!logoUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-  // #endregion
 
   // Default fallback icon
   const DefaultFallbackIcon = ({ className }: { className?: string }) => {
@@ -166,16 +158,10 @@ export default function CryptoIcon({ symbol, image, imageUrl, className = "w-6 h
           alt={symbol}
           className={`object-contain w-full h-full ${loading ? 'opacity-0' : 'opacity-100'} transition-opacity duration-200`}
           onError={() => {
-            // #region agent log
-            fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/CryptoIcon.tsx:onError',message:'Image load error',data:{symbol,imageUrl:nowPaymentsImageUrl,source:'nowPayments'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-            // #endregion
             setError(true);
             setLoading(false);
           }}
           onLoad={() => {
-            // #region agent log
-            fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/CryptoIcon.tsx:onLoad',message:'Image loaded successfully',data:{symbol,imageUrl:nowPaymentsImageUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-            // #endregion
             setLoading(false);
           }}
           loading="eager"
@@ -198,9 +184,6 @@ export default function CryptoIcon({ symbol, image, imageUrl, className = "w-6 h
           height={size}
           className={`object-cover ${loading ? 'opacity-0' : 'opacity-100'} transition-opacity duration-200`}
           onError={() => {
-            // #region agent log
-            fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/CryptoIcon.tsx:onError',message:'Image load error',data:{symbol,imageUrl:nowPaymentsImageUrl,source:'nowPayments'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-            // #endregion
             setError(true);
             setLoading(false);
           }}
@@ -223,9 +206,6 @@ export default function CryptoIcon({ symbol, image, imageUrl, className = "w-6 h
           alt={symbol}
           className={`object-contain w-full h-full ${loading ? 'opacity-0' : 'opacity-100'} transition-opacity duration-200`}
           onError={() => {
-            // #region agent log
-            fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/CryptoIcon.tsx:onError',message:'Image load error',data:{symbol,imageUrl:nowPaymentsImageUrl,source:'nowPayments'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-            // #endregion
             setError(true);
             setLoading(false);
           }}

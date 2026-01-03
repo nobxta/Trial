@@ -312,15 +312,7 @@ export function searchAssetNetworks(query: string): SupportedAssetNetwork[] {
   
   const normalizedQuery = normalizeSearchQuery(query);
   
-  // #region agent log
-  fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'lib/supportedAssets.ts:searchAssetNetworks',message:'Search query processed',data:{originalQuery:query,normalizedQuery,resultsCount:0},timestamp:Date.now(),sessionId:'debug-session',runId:'search-enhancement',hypothesisId:'SEARCH_IMPROVEMENT'})}).catch(()=>{});
-  // #endregion
-  
   const results = getEnabledAssetNetworks().filter(asset => matchesAsset(asset, normalizedQuery));
-  
-  // #region agent log
-  fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'lib/supportedAssets.ts:searchAssetNetworks',message:'Search results',data:{query:normalizedQuery,resultsCount:results.length,matchedSymbols:results.map(r=>r.symbol).slice(0,5)},timestamp:Date.now(),sessionId:'debug-session',runId:'search-enhancement',hypothesisId:'SEARCH_IMPROVEMENT'})}).catch(()=>{});
-  // #endregion
   
   return results;
 }

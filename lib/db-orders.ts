@@ -128,10 +128,6 @@ export async function getUserOrders(
 
   const { data, error } = await query;
 
-  // #region agent log
-  fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'lib/db-orders.ts:getUserOrders',message:'Database query result',data:{userId,hasError:!!error,error:error?.message,dataCount:data?.length||0,hasData:!!data},timestamp:Date.now(),sessionId:'debug-session',runId:'order-history',hypothesisId:'ORDERS_NOT_SHOWING'})}).catch(()=>{});
-  // #endregion
-
   if (error) {
     console.error('Database error fetching orders:', error);
     return [];
@@ -395,15 +391,9 @@ export async function updateOrderStatus(
   // Webhooks represent external truth from NOWPayments (signature-verified)
   // State machine rules apply ONLY to: user actions, admin actions, system actions (non-webhook)
   const isWebhookUpdate = options?.source === 'webhook';
-  
-  console.log('🔵 [updateOrderStatus] Update source:', options?.source);
-  console.log('🔵 [updateOrderStatus] isWebhookUpdate:', isWebhookUpdate);
-  console.log('🔵 [updateOrderStatus] Current internal_status:', currentInternalStatus);
-  console.log('🔵 [updateOrderStatus] Target internal_status:', internalStatus);
 
   // WEBHOOK AUTHORITATIVE RULE: If source is webhook, bypass ALL validation
   if (isWebhookUpdate) {
-    console.log('🟢 Webhook override: bypassing state machine');
     // Webhooks are authoritative - skip ALL transition validation
     // Directly proceed to database update
   } else {

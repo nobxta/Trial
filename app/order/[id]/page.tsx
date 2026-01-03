@@ -52,10 +52,6 @@ function getAssetMeta(assetCode: string): { name: string; icon: string } {
   const key = assetCode.toLowerCase();
   const normalized = normalizeAsset(assetCode);
   
-  // #region agent log
-  fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/order/[id]/page.tsx:getAssetMeta',message:'getAssetMeta called',data:{assetCode,key,hasNormalized:!!normalized,normalizedSymbol:normalized?.symbol,normalizedDisplayName:normalized?.displayName,normalizedIconUrl:normalized?.iconUrl,hasAssetMeta:!!ASSET_META[key]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B,C'})}).catch(()=>{});
-  // #endregion
-  
   if (normalized) {
     return {
       name: normalized.displayName,
@@ -107,10 +103,6 @@ export default function OrderPage({ params }: { params: { id: string } }) {
   
   // Fetch order from API (single source of truth)
   const fetchOrder = async (): Promise<void> => {
-    // #region agent log
-    fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/order/[id]/page.tsx:fetchOrder',message:'fetchOrder called',data:{orderId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-    // #endregion
-    
     setIsSyncing(true);
     try {
       const res = await fetch(`/api/order/${orderId}`);
@@ -132,10 +124,6 @@ export default function OrderPage({ params }: { params: { id: string } }) {
       }
       
       const data = await res.json();
-      
-      // #region agent log
-      fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/order/[id]/page.tsx:fetchOrder',message:'API response received',data:{success:data.success,hasOrder:!!data.order,internalStatus:data.order?.internalStatus,updatedAt:data.order?.updatedAt,payAmount:data.order?.payAmount,outcomeAmount:data.order?.outcomeAmount},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-      // #endregion
       
       if (data?.success && data?.order) {
         const apiOrder = data.order;
@@ -162,10 +150,6 @@ export default function OrderPage({ params }: { params: { id: string } }) {
           payinHash: apiOrder.payinHash,
           payoutHash: apiOrder.payoutHash,
         };
-        
-        // #region agent log
-        fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/order/[id]/page.tsx:fetchOrder',message:'Calling setOrder',data:{internalStatus:orderData.internalStatus,updatedAt:orderData.updatedAt,payAmount:orderData.payAmount,outcomeAmount:orderData.outcomeAmount},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
         
         setOrder(orderData);
         setLoading(false);
@@ -272,20 +256,12 @@ export default function OrderPage({ params }: { params: { id: string } }) {
   const sendMeta = getAssetMeta(order.payCurrency);
   const receiveMeta = getAssetMeta(order.outcomeCurrency);
   
-  // #region agent log
-  fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/order/[id]/page.tsx:assetMeta',message:'Asset metadata resolved',data:{payCurrency:order.payCurrency,outcomeCurrency:order.outcomeCurrency,sendMetaName:sendMeta.name,sendMetaIcon:sendMeta.icon,receiveMetaName:receiveMeta.name,receiveMetaIcon:receiveMeta.icon},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,C'})}).catch(()=>{});
-  // #endregion
-  
   // Format amounts
   const sendAmountFormatted = formatCryptoAmount(order.payAmount, order.payCurrency);
   const receiveAmountFormatted = formatCryptoAmount(order.outcomeAmount, order.outcomeCurrency);
   
   // Get timeline step from internal_status (single source of truth)
   const timelineStep = getStepFromInternalStatus(order.internalStatus);
-  
-  // #region agent log
-  fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/order/[id]/page.tsx:render',message:'Component render',data:{internalStatus:order.internalStatus,updatedAt:order.updatedAt,timelineStep,sendAmount:sendAmountFormatted,receiveAmount:receiveAmountFormatted},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-  // #endregion
   
   return (
     <div className="min-h-screen bg-[#0a0d11] text-white selection:bg-blue-500/30 selection:text-blue-200 relative" key={order.updatedAt}>
@@ -305,14 +281,6 @@ export default function OrderPage({ params }: { params: { id: string } }) {
             receiveDisplayName={receiveMeta.name}
             receiveIconUrl={receiveMeta.icon}
           />
-          {/* #region agent log */}
-          {(() => {
-            const sendSymbolExtracted = sendMeta.name.split(' ')[0].toUpperCase();
-            const receiveSymbolExtracted = receiveMeta.name.split(' ')[0].toUpperCase();
-            fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/order/[id]/page.tsx:OrderSummary',message:'Symbol extraction for icons',data:{sendSymbolExtracted,receiveSymbolExtracted,sendMetaName:sendMeta.name,receiveMetaName:receiveMeta.name},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-            return null;
-          })()}
-          {/* #endregion */}
           
           {/* Main Order Section */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -63,9 +63,6 @@ export function useCoinGecko(options: UseCoinGeckoOptions = {}): UseCoinGeckoRet
       }
 
       if (isMountedRef.current) {
-        // #region agent log
-        fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useCoinGecko.ts:45',message:'Coins data received',data:{coinCount:data.length,coinSymbols:data.map(c=>c.symbol).slice(0,10),sampleCoinId:data[0]?.id,sampleCoinSymbol:data[0]?.symbol,sampleCoinImage:data[0]?.image?.substring(0,50)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,C'})}).catch(()=>{});
-        // #endregion
         setCoins(data);
         setLastUpdated(Date.now());
         setLoading(false);
