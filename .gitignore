@@ -43,6 +43,7 @@ next-env.d.ts
 !/data/supportedCoins.json
 !/data/coingeckoMap.json
 !/data/blog-posts.ts
+!/data/blog-posts.json
 
 # cursor
 .cursor/debug.log
