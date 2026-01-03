@@ -1,4 +1,5 @@
-import blogPostsData from '../data/blog-posts.json';
+import fs from 'fs';
+import path from 'path';
 
 export interface BlogPost {
   id: string;
@@ -18,8 +19,12 @@ export interface BlogPost {
 export type BlogCategory = 'guides' | 'news' | 'currencies' | 'all';
 export type BlogTab = 'recent' | 'guides' | 'news' | 'about-cryptocurrencies' | 'exchange-tutorials';
 
+// Read blog posts from JSON file
+const blogPostsFilePath = path.join(process.cwd(), 'data', 'blog-posts.json');
+const blogPostsData = JSON.parse(fs.readFileSync(blogPostsFilePath, 'utf8'));
+
 // Convert dates and ensure type safety
-const blogPosts: BlogPost[] = blogPostsData.map(post => ({
+const blogPosts: BlogPost[] = blogPostsData.map((post: any) => ({
   ...post,
   category: post.category as BlogPost['category'],
 }));
