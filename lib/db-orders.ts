@@ -200,15 +200,18 @@ export async function createOrder(userId: string | null, orderData: {
   const internalStatus: InternalStatus = orderData.internalStatus || 'NEW';
   const userStatus = getUserFacingStatus(internalStatus);
 
+  // Helper to convert undefined to null for database (DB uses null, TS uses undefined)
+  const toDbNull = <T>(value: T | undefined): T | null => value === undefined ? null : value;
+  
   const { data, error } = await supabaseAdmin!
     .from('orders')
     .insert({
       user_id: userId || null,
       order_id: orderData.orderId,
-      payment_id: orderData.paymentId || null,
-      purchase_id: orderData.purchaseId || null,
-      payment_mode: orderData.paymentMode || null,
-      sandbox_case: orderData.sandboxCase || null,
+      payment_id: toDbNull(orderData.paymentId),
+      purchase_id: toDbNull(orderData.purchaseId),
+      payment_mode: toDbNull(orderData.paymentMode),
+      sandbox_case: toDbNull(orderData.sandboxCase),
       // New status fields
       internal_status: internalStatus,
       user_status: userStatus,
@@ -217,17 +220,17 @@ export async function createOrder(userId: string | null, orderData: {
       // Order details
       from_currency: orderData.fromCurrency,
       from_amount: orderData.fromAmount,
-      from_network: orderData.fromNetwork || null,
-      from_address: orderData.fromAddress || null,
+      from_network: toDbNull(orderData.fromNetwork),
+      from_address: toDbNull(orderData.fromAddress),
       to_currency: orderData.toCurrency,
       to_amount: orderData.toAmount,
-      to_network: orderData.toNetwork || null,
-      to_address: orderData.toAddress || null,
+      to_network: toDbNull(orderData.toNetwork),
+      to_address: toDbNull(orderData.toAddress),
       // Rate fields
-      provider_rate: orderData.providerRate || null,
-      expected_receive: orderData.expectedReceive || null,
-      rate_timestamp: orderData.rateTimestamp || null,
-      rate_deviation_percent: orderData.rateDeviationPercent || null,
+      provider_rate: toDbNull(orderData.providerRate),
+      expected_receive: toDbNull(orderData.expectedReceive),
+      rate_timestamp: toDbNull(orderData.rateTimestamp),
+      rate_deviation_percent: toDbNull(orderData.rateDeviationPercent),
     })
     .select()
     .single();
@@ -530,11 +533,15 @@ export async function updateOrderStatus(
 
   // Record status change in history (only if status actually changed)
   if (currentInternalStatus !== internalStatus) {
+    // Map StatusSource to addOrderStatusHistory source type
+    // StatusSource: 'webhook' | 'admin' | 'system'
+    // addOrderStatusHistory expects: 'webhook' | 'polling' | 'manual' | 'system'
+    const historySource = statusSource === 'admin' ? 'manual' : statusSource;
     // Record history asynchronously (don't await to avoid blocking the response)
     addOrderStatusHistory(
       orderId,
       internalStatus,
-      statusSource,
+      historySource as 'webhook' | 'polling' | 'manual' | 'system',
       options?.paymentStatus, // Pass original payment_status if available
       paymentData ? { payinHash: paymentData.payinHash, payoutHash: paymentData.payoutHash } : undefined
     ).catch(err => {

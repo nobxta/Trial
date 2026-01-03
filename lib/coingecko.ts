@@ -134,7 +134,7 @@ function isCacheValid<T>(entry: CacheEntry<T> | null): boolean {
 function getCachedMarketData(coinIds?: string[]): CoinMarketData[] | null {
   const cacheKey = coinIds ? coinIds.sort().join(',') : 'all';
   const cached = marketDataCache.get(cacheKey);
-  if (isCacheValid(cached)) {
+  if (isCacheValid(cached ?? null)) {
     return cached!.data;
   }
   return null;

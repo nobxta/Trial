@@ -539,28 +539,32 @@ export default function ExchangeWidget() {
 
   // Always ensure we have valid cryptos - use defaults if missing
   // This ensures the UI always renders, never shows blank screen
-  const displaySendCrypto = useMemo(() => {
+  const displaySendCrypto = useMemo((): SupportedCrypto | null => {
+    const sendCryptoImageUrl = sendCrypto?.imageUrl;
     if (sendCrypto) return sendCrypto;
     const defaults = getValidDefaultCryptoIds();
     const defaultCrypto = getCryptoById(defaults.sendId);
+    const defaultCryptoImageUrl = defaultCrypto?.imageUrl;
     
     // #region agent log
-    fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/ExchangeWidget.tsx:displaySendCrypto',message:'displaySendCrypto computed',data:{hasSendCrypto:!!sendCrypto,sendCryptoId,sendCryptoImageUrl:sendCrypto?.imageUrl,defaultSendId:defaults.sendId,defaultCryptoImageUrl:defaultCrypto?.imageUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/ExchangeWidget.tsx:displaySendCrypto',message:'displaySendCrypto computed',data:{hasSendCrypto:!!sendCrypto,sendCryptoId,sendCryptoImageUrl,defaultSendId:defaults.sendId,defaultCryptoImageUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
     // #endregion
     
-    return defaultCrypto || null;
+    return defaultCrypto ?? null;
   }, [sendCrypto, sendCryptoId]);
   
-  const displayReceiveCrypto = useMemo(() => {
+  const displayReceiveCrypto = useMemo((): SupportedCrypto | null => {
+    const receiveCryptoImageUrl = receiveCrypto?.imageUrl;
     if (receiveCrypto) return receiveCrypto;
     const defaults = getValidDefaultCryptoIds();
     const defaultCrypto = getCryptoById(defaults.receiveId);
+    const defaultCryptoImageUrl = defaultCrypto?.imageUrl;
     
     // #region agent log
-    fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/ExchangeWidget.tsx:displayReceiveCrypto',message:'displayReceiveCrypto computed',data:{hasReceiveCrypto:!!receiveCrypto,receiveCryptoId,receiveCryptoImageUrl:receiveCrypto?.imageUrl,defaultReceiveId:defaults.receiveId,defaultCryptoImageUrl:defaultCrypto?.imageUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'components/ExchangeWidget.tsx:displayReceiveCrypto',message:'displayReceiveCrypto computed',data:{hasReceiveCrypto:!!receiveCrypto,receiveCryptoId,receiveCryptoImageUrl,defaultReceiveId:defaults.receiveId,defaultCryptoImageUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
     // #endregion
-    
-    return defaultCrypto || null;
+
+    return defaultCrypto ?? null;
   }, [receiveCrypto, receiveCryptoId]);
 
   return (
@@ -765,7 +769,7 @@ export default function ExchangeWidget() {
                   ) : addresses.length === 0 ? (
                     <div className="p-4 text-center">
                       <p className="text-neutral-400 text-sm mb-2">
-                        No addresses saved for {receiveCrypto.symbol}
+                        No addresses saved for {receiveCrypto?.symbol || 'this currency'}
                       </p>
                       <p className="text-neutral-500 text-xs">
                         Please paste your address manually or add it to your address book

@@ -179,7 +179,7 @@ export default function ExchangeWidget() {
     };
 
     fetchLimits();
-  }, [sendCrypto?.id, receiveCrypto?.id, orderType]);
+  }, [sendCrypto, receiveCrypto, orderType]);
 
   // Format minimum amount for display
   const formatMinAmount = (amount: number): string => {

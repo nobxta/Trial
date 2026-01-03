@@ -24,6 +24,7 @@ interface Order {
   provider_status?: string | null;
   from_currency: string;
   from_amount: string;
+  from_network?: string | null;
   to_currency: string;
   to_amount: string;
   created_at: string;

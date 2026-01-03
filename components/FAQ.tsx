@@ -86,7 +86,7 @@ export default function FAQ() {
       {faqs.map((faq, index) => (
         <div
           key={faq.id}
-          ref={(el) => (itemRefs.current[index] = el)}
+          ref={(el) => { itemRefs.current[index] = el; }}
           className={`border-b border-white/5 transition-all duration-500 ${
             visibleItems.has(index) ? "scroll-fade-in visible" : "scroll-fade-in"
           }`}

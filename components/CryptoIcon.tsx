@@ -36,7 +36,8 @@ const cryptocompareImageIds: Record<string, string> = {
 };
 
 // Extract width and height from className if present (e.g., "w-6 h-6" = 24px)
-function getSize(className: string): number {
+function getSize(className: string | undefined): number {
+  if (!className) return 24;
   const match = className.match(/w-(\d+)/);
   if (match) {
     const size = parseInt(match[1]);

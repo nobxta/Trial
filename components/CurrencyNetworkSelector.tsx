@@ -94,7 +94,7 @@ export default function CurrencyNetworkSelector({
   const POPULAR_COINS = useMemo(() => {
     const { getPopularAssetNetworks } = require('@/lib/supportedAssets');
     const popular = getPopularAssetNetworks(6);
-    return popular.map(asset => ({
+    return popular.map((asset: { symbol: string; networkCode: string }) => ({
       symbol: asset.symbol,
       networkChain: asset.networkCode,
     }));
@@ -130,25 +130,26 @@ export default function CurrencyNetworkSelector({
   }, [currencies, excludeSymbol]);
 
   // Memoized: Build popular coins options
-  const popularOptions = useMemo(() => {
+  const popularOptions = useMemo((): CurrencyNetwork[] => {
     return POPULAR_COINS
-      .filter(pop => pop.symbol.toUpperCase() !== excludeSymbol?.toUpperCase())
-      .map(pop => {
+      .filter((pop: { symbol: string; networkChain: string }) => pop.symbol.toUpperCase() !== excludeSymbol?.toUpperCase())
+      .map((pop: { symbol: string; networkChain: string }): CurrencyNetwork | null => {
         const symbol = pop.symbol.toUpperCase();
         const networks = getNetworksForCurrency(symbol);
-        const network = networks.find(n => n.chain === pop.networkChain) || networks[0];
+        const network = networks.find((n: Network) => n.chain === pop.networkChain) || networks[0];
+        if (!network) return null;
         return {
           symbol,
           network,
           displayName: formatNetworkDisplayName(symbol, network),
         };
       })
-      .filter(opt => opt.network);
+      .filter((opt: CurrencyNetwork | null): opt is CurrencyNetwork => opt !== null);
   }, [excludeSymbol, POPULAR_COINS]);
 
   // Get popular option IDs for filtering
   const popularOptionIds = useMemo(() => {
-    return new Set(popularOptions.map(opt => `${opt.symbol}-${opt.network.id}`));
+    return new Set(popularOptions.map((opt: CurrencyNetwork) => `${opt.symbol}-${opt.network.id}`));
   }, [popularOptions]);
 
   // Memoized: Get all other options (excluding popular ones)

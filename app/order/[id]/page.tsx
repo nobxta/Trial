@@ -260,7 +260,7 @@ export default function OrderPage({ params }: { params: { id: string } }) {
   
   // Check if expired
   const isExpired = order.internalStatus === 'EXPIRED' || 
-    (order.expiresAt && new Date(order.expiresAt) < new Date());
+    !!(order.expiresAt && new Date(order.expiresAt) < new Date());
   
   // Calculate time remaining
   const createdAt = new Date(order.createdAt);

@@ -42,3 +42,4 @@ COMMENT ON COLUMN blocked_ips.ip_hash IS 'SHA256 hash of IP for privacy/security
 COMMENT ON COLUMN blocked_ips.expires_at IS 'When the block expires (NULL = permanent)';
 COMMENT ON COLUMN blocked_ips.is_active IS 'Whether the block is currently active';
 
+

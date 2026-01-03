@@ -12,8 +12,8 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const userEmail = body.email || null;
-    const userAgent = request.headers.get('user-agent') || null;
+    const userEmail = body.email || undefined;
+    const userAgent = request.headers.get('user-agent') || undefined;
     const ip = getClientIP(request);
     const ipHash = hashIP(ip);
 

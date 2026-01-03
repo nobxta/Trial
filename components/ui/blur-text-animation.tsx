@@ -69,8 +69,10 @@ export default function BlurTextAnimation({
     startAnimation();
 
     return () => {
-      if (animationTimeoutRef.current) clearTimeout(animationTimeoutRef.current);
-      if (resetTimeoutRef.current) clearTimeout(resetTimeoutRef.current);
+      const animationTimeout = animationTimeoutRef.current;
+      const resetTimeout = resetTimeoutRef.current;
+      if (animationTimeout) clearTimeout(animationTimeout);
+      if (resetTimeout) clearTimeout(resetTimeout);
     };
   }, [textWords]);
 

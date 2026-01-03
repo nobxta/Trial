@@ -137,8 +137,8 @@ export async function POST(request: NextRequest) {
 
       // Calculate rate for validation (if possible)
       const expectedReceive = parseFloat(body.expected_receive || '0');
-      let providerRate: number | null = null;
-      let rateDeviationPercent: number | null = null;
+      let providerRate: number | undefined = undefined;
+      let rateDeviationPercent: number | undefined = undefined;
       
       if (sendAmount > 0 && expectedReceive > 0) {
         providerRate = expectedReceive / sendAmount;
@@ -148,26 +148,28 @@ export async function POST(request: NextRequest) {
 
       // Save order to database (NON-NEGOTIABLE: Database is source of truth)
       try {
-        await createOrder(userId, {
+        // Build order data, omitting undefined fields (TypeScript convention)
+        const orderData = {
           orderId: body.order_id || payment.order_id,
           paymentId: payment.payment_id,
-          purchaseId: payment.purchase_id || null,
           paymentMode: currentPaymentMode,
-          sandboxCase: resolvedSandboxCase, // Save resolved sandbox case from env variable
-          internalStatus: 'NEW', // New order starts at NEW
+          sandboxCase: resolvedSandboxCase,
+          internalStatus: 'NEW' as const,
           fromCurrency: body.send_asset.toUpperCase(),
           fromAmount: sendAmount,
-          fromNetwork: body.send_network || null,
-          fromAddress: payment.pay_address || null,
           toCurrency: body.receive_asset.toUpperCase(),
           toAmount: expectedReceive,
-          toNetwork: body.receive_network || null,
-          toAddress: body.destination || null,
-          providerRate: providerRate,
-          expectedReceive: expectedReceive,
           rateTimestamp: new Date().toISOString(),
-          rateDeviationPercent: rateDeviationPercent,
-        });
+          ...(payment.purchase_id && { purchaseId: payment.purchase_id }),
+          ...(body.send_network && { fromNetwork: body.send_network }),
+          ...(payment.pay_address && { fromAddress: payment.pay_address }),
+          ...(body.receive_network && { toNetwork: body.receive_network }),
+          ...(body.destination && { toAddress: body.destination }),
+          ...(providerRate !== undefined && { providerRate }),
+          ...(expectedReceive !== undefined && { expectedReceive }),
+          ...(rateDeviationPercent !== undefined && { rateDeviationPercent }),
+        };
+        await createOrder(userId, orderData);
       } catch (dbError: any) {
         // Log error but don't fail the payment creation
         // Order is still created in NOWPayments, but DB save failed
@@ -261,22 +263,20 @@ export async function POST(request: NextRequest) {
 
       // Save order to database (NON-NEGOTIABLE: Database is source of truth)
       try {
-        await createOrder(userId, {
+        const orderData = {
           orderId: body.order_id || payment.order_id,
           paymentId: payment.payment_id,
-          purchaseId: payment.purchase_id || null,
           paymentMode: currentPaymentMode,
           sandboxCase: resolvedSandboxCase, // Save resolved sandbox case from env variable
-          status: 'pending',
+          internalStatus: 'NEW' as const, // New order starts at NEW
           fromCurrency: payCurrency.toUpperCase(),
           fromAmount: parseFloat(body.expected_amount || '0'),
-          fromNetwork: null,
-          fromAddress: payment.pay_address || null,
           toCurrency: payCurrency.toUpperCase(), // Payment orders: same currency
           toAmount: parseFloat(body.expected_amount || '0'),
-          toNetwork: null,
-          toAddress: null,
-        });
+          ...(payment.purchase_id && { purchaseId: payment.purchase_id }),
+          ...(payment.pay_address && { fromAddress: payment.pay_address }),
+        };
+        await createOrder(userId, orderData);
       } catch (dbError: any) {
         console.error('Failed to save order to database:', dbError);
         // Continue - payment is still valid

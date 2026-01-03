@@ -200,7 +200,7 @@ export async function recordOrderCompletion(
   if (feeAmount > 0) {
     const feeCreditSuccess = await credit({
       order_id: orderId,
-      user_id: null, // System/platform account (no user_id for fees)
+      user_id: undefined, // System/platform account (no user_id for fees)
       type: 'credit',
       category: 'fee',
       amount: feeAmount,
