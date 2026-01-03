@@ -261,10 +261,10 @@ function PreChatView({
                     </svg>
                   </div>
                   <p className="text-base sm:text-lg font-medium text-white mb-2">
-                    👋 Hi! Please start by saying "Hi"
+                    👋 Hi! Please start by saying &quot;Hi&quot;
                   </p>
                   <p className="text-xs sm:text-sm text-neutral-400 max-w-md">
-                    We'll ask about your issue after you greet us.
+                    We&apos;ll ask about your issue after you greet us.
                   </p>
                 </div>
               ) : (
