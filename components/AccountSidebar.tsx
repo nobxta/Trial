@@ -58,16 +58,18 @@ export default function AccountSidebar({ onLogout, onNavigate }: AccountSidebarP
       </nav>
       
       {/* Logout Button */}
-      <button
-        onClick={() => {
-          onNavigate?.();
-          onLogout();
-        }}
-        className="mt-4 w-full flex items-center gap-3 px-4 py-3 rounded-lg text-neutral-400 hover:text-white hover:bg-white/5 transition-colors"
-      >
-        <LogOut className="w-5 h-5" />
-        <span className="text-sm font-medium">Sign out</span>
-      </button>
+      <div className="mt-auto pt-4 border-t border-white/5">
+        <button
+          onClick={() => {
+            onNavigate?.();
+            onLogout();
+          }}
+          className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-500/10 border border-red-500/20 hover:border-red-500/40 transition-all duration-200"
+        >
+          <LogOut className="w-5 h-5" />
+          <span className="text-sm font-medium">Sign out</span>
+        </button>
+      </div>
     </aside>
   );
 }
