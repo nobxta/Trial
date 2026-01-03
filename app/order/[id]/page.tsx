@@ -266,7 +266,7 @@ export default function OrderPage({ params }: { params: { id: string } }) {
   return (
     <div className="min-h-screen bg-[#0a0d11] text-white selection:bg-blue-500/30 selection:text-blue-200 relative" key={order.updatedAt}>
       <Header />
-      <main className="relative z-10 pt-24 pb-16 px-4 sm:px-6">
+      <main className="relative z-10 pt-20 sm:pt-24 pb-12 sm:pb-16 px-4 sm:px-6">
         {/* Subtle background gradient */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-blue-500/5 rounded-full blur-[100px] pointer-events-none -z-10"></div>
         <div className="container mx-auto max-w-7xl">
@@ -283,9 +283,9 @@ export default function OrderPage({ params }: { params: { id: string } }) {
           />
           
           {/* Main Order Section */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
             {/* Left: Order Details */}
-            <div className="lg:col-span-2 space-y-6">
+            <div className="lg:col-span-2 space-y-4 sm:space-y-6">
               <OrderDetails
                 orderId={order.orderId}
                 depositAmount={sendAmountFormatted}
@@ -305,7 +305,7 @@ export default function OrderPage({ params }: { params: { id: string } }) {
             </div>
             
             {/* Right: QR Code */}
-            <div>
+            <div className="lg:sticky lg:top-24 lg:self-start">
               <QRCodeSection
                 address={order.payAddress || ''}
                 amount={sendAmountFormatted}
@@ -316,12 +316,12 @@ export default function OrderPage({ params }: { params: { id: string } }) {
           </div>
           
           {/* Progress Timeline */}
-          <div className="mt-8">
+          <div className="mt-6 sm:mt-8">
             <ProgressTimeline currentStep={timelineStep} isExpired={isExpired} />
             
             {/* Subtle syncing indicator */}
             {!isExpired && !['DONE', 'FAILED', 'EXPIRED'].includes(order.internalStatus) && isSyncing && (
-              <div className="mt-4 flex items-center justify-center gap-2 text-sm text-[#8b949e]">
+              <div className="mt-4 flex items-center justify-center gap-2 text-xs sm:text-sm text-[#8b949e]">
                 <div className="w-4 h-4 border-2 border-[#8b949e] border-t-transparent rounded-full animate-spin"></div>
                 <span>Checking payment status...</span>
               </div>
@@ -329,7 +329,7 @@ export default function OrderPage({ params }: { params: { id: string } }) {
           </div>
           
           {/* Info Sections */}
-          <div className="mt-12">
+          <div className="mt-8 sm:mt-10 md:mt-12">
             <OrderInfo orderId={orderId} />
           </div>
         </div>

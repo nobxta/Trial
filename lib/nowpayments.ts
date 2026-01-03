@@ -96,6 +96,10 @@ export async function createPayment(params: PaymentRequest): Promise<PaymentResp
       errorMessage = errorText || errorMessage;
     }
     
+    // #region agent log
+    fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'nowpayments.ts:86',message:'NOWPayments createPayment error',data:{status:response.status,errorMessage,errorDetails,payload:JSON.stringify(payload),price_amount:payload.price_amount,pay_currency:payload.pay_currency},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
+    
     // Log detailed error in development
     if (typeof window === 'undefined' && process.env.NODE_ENV === 'development') {
       console.error('NOWPayments payment API error:', {

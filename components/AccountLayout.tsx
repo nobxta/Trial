@@ -72,11 +72,11 @@ export default function AccountLayout({ children }: AccountLayoutProps) {
 
         {/* Mobile Sidebar Drawer */}
         <div
-          className={`fixed top-0 left-0 h-full w-64 bg-[#0a0a0a] border-r border-white/5 z-50 transform transition-transform duration-300 ease-in-out md:hidden ${
+          className={`fixed top-0 left-0 h-full w-64 bg-[#0a0a0a] border-r border-white/5 z-50 transform transition-transform duration-300 ease-in-out md:hidden flex flex-col ${
             mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
-          <div className="flex items-center justify-between p-4 border-b border-white/5">
+          <div className="flex items-center justify-between p-4 border-b border-white/5 flex-shrink-0">
             <span className="text-white font-semibold">Menu</span>
             <button
               onClick={closeMobileMenu}
@@ -86,7 +86,9 @@ export default function AccountLayout({ children }: AccountLayoutProps) {
               <X className="w-5 h-5 text-white" />
             </button>
           </div>
-          <AccountSidebar onLogout={handleLogout} onNavigate={closeMobileMenu} />
+          <div className="flex-1 overflow-y-auto">
+            <AccountSidebar onLogout={handleLogout} onNavigate={closeMobileMenu} />
+          </div>
         </div>
 
         {/* Main Content */}

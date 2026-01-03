@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { ArrowDown, Copy, CheckCircle, BookOpen, X, Check, AlertTriangle } from "lucide-react";
 import CryptoSelector from "./CryptoSelector";
+import ErrorMessage from "./ErrorMessage";
 import { applyFee } from "@/lib/pricing";
 import { getDefaultNetwork, Network } from "@/lib/networks";
 import { SupportedCrypto, getCryptoById, getNetworkChainFromSupportedCrypto, getCryptosBySymbol, getEnabledCryptos } from "@/lib/supported-cryptos";
@@ -24,6 +25,28 @@ const formatMinAmount = (amount: number): string => {
     // For small amounts (< 0.01), show up to 8 decimal places
     return amount.toFixed(8).replace(/\.?0+$/, '');
   }
+};
+
+// Format error messages to be user-friendly (convert scientific notation, etc.)
+const formatErrorMessage = (errorMessage: string): string => {
+  if (!errorMessage) return 'An error occurred. Please try again.';
+  
+  // Convert scientific notation to readable format (e.g., 8.2e-7 -> 0.00000082)
+  let formatted = errorMessage.replace(/(\d+\.?\d*)e([+-]\d+)/gi, (match, base, exponent) => {
+    const num = parseFloat(base);
+    const exp = parseInt(exponent);
+    const result = num * Math.pow(10, exp);
+    return formatMinAmount(result);
+  });
+  
+  // Common error message improvements
+  formatted = formatted
+    .replace(/less than minimal/gi, 'below the minimum amount')
+    .replace(/Crypto amount/gi, 'Amount')
+    .replace(/is less than minimal/gi, 'is below the minimum')
+    .replace(/minimum amount is/gi, 'minimum is');
+  
+  return formatted;
 };
 
 // Get valid default crypto IDs - Default: ETH to BTC
@@ -273,6 +296,12 @@ export default function ExchangeWidget() {
   // Track if user has interacted with the amount input
   const [hasUserTyped, setHasUserTyped] = useState(false);
   
+  // Loading state for order creation
+  const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+  
+  // Error state for order creation
+  const [orderError, setOrderError] = useState<string | null>(null);
+  
   // Use locked rate for fixed, live rate for float
   const exchangeRate = useMemo(() => {
     if (orderType === "fixed") {
@@ -370,6 +399,25 @@ export default function ExchangeWidget() {
     return formatPreciseNumber(calculated, 8);
   }, [sendAmount, exchangeRate, orderType, fixedRateFee, floatRateFee]);
 
+  // Calculate USD values for display
+  const sendAmountUsd = useMemo(() => {
+    if (!sendCrypto || !sendAmount) return null;
+    const amount = parseFloat(sendAmount);
+    if (isNaN(amount) || amount <= 0) return null;
+    const price = prices[sendCrypto.coingeckoId]?.usd;
+    if (!price || price <= 0) return null;
+    return amount * price;
+  }, [sendAmount, sendCrypto, prices]);
+
+  const receiveAmountUsd = useMemo(() => {
+    if (!receiveCrypto || !receiveAmount) return null;
+    const amount = parseFloat(receiveAmount);
+    if (isNaN(amount) || amount <= 0) return null;
+    const price = prices[receiveCrypto.coingeckoId]?.usd;
+    if (!price || price <= 0) return null;
+    return amount * price;
+  }, [receiveAmount, receiveCrypto, prices]);
+
   // Fetch exchange limits when pair changes
   useEffect(() => {
     if (!sendCrypto || !receiveCrypto) {
@@ -394,6 +442,9 @@ export default function ExchangeWidget() {
         
         const data = await response.json();
         if (data.success && data.limits) {
+          // #region agent log
+          fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ExchangeWidget.tsx:420',message:'UI Limits Fetched',data:{minAmount:data.limits.min_amount,maxAmount:data.limits.max_amount,cached:data.cached,stale:data.stale,sendCryptoId,receiveCryptoId,orderType},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+          // #endregion
           setExchangeLimits(data.limits);
         } else {
           throw new Error(data.error || 'Failed to fetch exchange limits');
@@ -707,6 +758,11 @@ export default function ExchangeWidget() {
                 prices={prices}
               />
             </div>
+            {sendAmountUsd !== null && parseFloat(sendAmount) > 0 && (
+              <div className="px-2 text-[10px] sm:text-xs text-neutral-500">
+                ≈ ${sendAmountUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+            )}
             {/* Error message container - reserved space to prevent layout shift */}
             <div className="min-h-[20px] px-2">
               {amountValidationError && (
@@ -776,6 +832,11 @@ export default function ExchangeWidget() {
                 prices={prices}
               />
             </div>
+            {receiveAmountUsd !== null && parseFloat(receiveAmount) > 0 && (
+              <div className="px-2 text-[10px] sm:text-xs text-neutral-500">
+                ≈ ${receiveAmountUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+            )}
           </div>
 
           {/* Destination Address */}
@@ -953,43 +1014,49 @@ export default function ExchangeWidget() {
             </div>
           </div>
 
+          {/* Order Error Banner */}
+          {orderError && (
+            <div id="order-error-banner" className="animate-in fade-in duration-200">
+              <ErrorMessage
+                error={orderError}
+                title="Order Creation Failed"
+                onRetry={() => setOrderError(null)}
+                className="mb-4"
+              />
+            </div>
+          )}
+
           {/* CTA */}
           <button
-            disabled={
-              !sendAmount ||
-              isNaN(parseFloat(sendAmount)) ||
-              parseFloat(sendAmount) <= 0 ||
-              !!amountValidationError ||
-              !destination.trim() ||
-              !isDestinationValid ||
-              exchangeRate === null ||
-              limitsLoading ||
-              (!exchangeLimits && !limitsError) || // Disable if limits not loaded yet (unless there's an error)
-              !!exchangeRateError ||
-              !!destinationValidationError
-            }
             onClick={async () => {
+              if (isCreatingOrder) return; // Prevent double clicks
+              
               try {
+                setOrderError(null); // Clear previous errors
+                setIsCreatingOrder(true);
                 const amount = parseFloat(sendAmount);
+                
+                // #region agent log
+                fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ExchangeWidget.tsx:1018',message:'UI Order Creation Start',data:{sendAmountString:sendAmount,parsedAmount:amount,exchangeLimitsMin:exchangeLimits?.min_amount,exchangeLimitsMax:exchangeLimits?.max_amount,orderType,rateType:orderType,sendCryptoId:displaySendCrypto?.id||sendCryptoId,receiveCryptoId:displayReceiveCrypto?.id||receiveCryptoId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                // #endregion
                 
                 // All validation is now handled inline - button is disabled if invalid
                 // These checks are just safety nets, but should never trigger due to button state
                 if (!sendAmount || isNaN(amount) || amount <= 0) {
+                  setIsCreatingOrder(false);
                   return; // Button should be disabled, but return silently if somehow clicked
                 }
                 
-                // Validate against real limits (safety check)
-                if (exchangeLimits) {
-                  if (amount < exchangeLimits.min_amount || amount > (exchangeLimits.max_amount || Infinity)) {
-                    return; // Button should be disabled, but return silently if somehow clicked
-                  }
-                }
+                // NOTE: We'll validate with fresh limits fetched right before API call
+                // This cached validation is just a safety net - real validation happens after limit refetch
                 
                 if (!destination.trim() || !isDestinationValid) {
+                  setIsCreatingOrder(false);
                   return; // Button should be disabled, but return silently if somehow clicked
                 }
 
                 if (exchangeRate === null) {
+                  setIsCreatingOrder(false);
                   return; // Button should be disabled, but return silently if somehow clicked
                 }
 
@@ -997,32 +1064,90 @@ export default function ExchangeWidget() {
                 const expectedReceive = applyFee(amount * exchangeRate, feePercent);
                 const orderId = Math.random().toString(36).substring(2, 8).toUpperCase();
                 
+                // CRITICAL: Refetch limits RIGHT BEFORE order creation using exact same parameters
+                // This ensures we validate with the SAME limits the API will use
+                const sendAssetId = displaySendCrypto?.id || sendCryptoId;
+                const receiveAssetId = displayReceiveCrypto?.id || receiveCryptoId;
+                const isFixedRate = orderType === 'fixed';
+                
+                // #region agent log
+                fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ExchangeWidget.tsx:1050',message:'Before refetching limits for final validation',data:{sendAmount:amount,sendAssetId,receiveAssetId,isFixedRate,orderType},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                // #endregion
+                
+                const limitsResponse = await fetch(
+                  `/api/exchange/limits?send_asset=${encodeURIComponent(sendAssetId)}&receive_asset=${encodeURIComponent(receiveAssetId)}&is_fixed_rate=${isFixedRate}`
+                );
+                
+                if (!limitsResponse.ok) {
+                  setIsCreatingOrder(false);
+                  setOrderError('Failed to validate exchange limits. Please try again.');
+                  return;
+                }
+                
+                const limitsData = await limitsResponse.json();
+                if (!limitsData.success || !limitsData.limits) {
+                  setIsCreatingOrder(false);
+                  setOrderError('Failed to validate exchange limits. Please try again.');
+                  return;
+                }
+                
+                const freshLimits = limitsData.limits;
+                
+                // #region agent log
+                fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ExchangeWidget.tsx:1075',message:'Fresh limits fetched for validation',data:{sendAmount:amount,minAmount:freshLimits.min_amount,maxAmount:freshLimits.max_amount,isValid:amount>=freshLimits.min_amount&&(!freshLimits.max_amount||amount<=freshLimits.max_amount)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                // #endregion
+                
+                // Final validation with fresh limits - MUST pass before proceeding
+                if (amount < freshLimits.min_amount) {
+                  setIsCreatingOrder(false);
+                  setOrderError(`Amount is below minimum. Minimum amount is ${formatMinAmount(freshLimits.min_amount)} ${displaySendCrypto?.symbol || ''}`);
+                  return;
+                }
+                
+                if (freshLimits.max_amount && amount > freshLimits.max_amount) {
+                  setIsCreatingOrder(false);
+                  setOrderError(`Amount exceeds maximum. Maximum amount is ${formatMinAmount(freshLimits.max_amount)} ${displaySendCrypto?.symbol || ''}`);
+                  return;
+                }
+                
+                const payload = {
+                  type: "exchange",
+                  send_asset: sendAssetId,
+                  send_network: sendNetwork.chain,
+                  send_amount: amount,
+                  receive_asset: receiveAssetId,
+                  receive_network: receiveNetwork.chain,
+                  expected_receive: expectedReceive,
+                  rate_type: orderType,
+                  destination: destination.trim(),
+                  order_id: orderId,
+                  price_amount: expectedReceive,
+                  price_currency: 'usd',
+                  pay_currency: sendAssetId,
+                  payout_address: destination.trim(),
+                  payout_currency: receiveAssetId,
+                };
+                
+                // #region agent log
+                fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ExchangeWidget.tsx:1053',message:'UI Payload Before API Call',data:{send_amount:payload.send_amount,price_amount:payload.price_amount,expected_receive:payload.expected_receive,rate_type:payload.rate_type,send_asset:payload.send_asset,receive_asset:payload.receive_asset,payloadJson:JSON.stringify(payload)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+                // #endregion
+                
                 // Use the id field for NOWPayments compatibility
                 const response = await fetch('/api/payment', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    type: "exchange",
-                    send_asset: displaySendCrypto?.id || sendCryptoId, // Use id field for NOWPayments
-                    send_network: sendNetwork.chain,
-                    send_amount: amount,
-                    receive_asset: displayReceiveCrypto?.id || receiveCryptoId, // Use id field for NOWPayments
-                    receive_network: receiveNetwork.chain,
-                    expected_receive: expectedReceive,
-                    rate_type: orderType,
-                    destination: destination.trim(),
-                    order_id: orderId,
-                    price_amount: expectedReceive,
-                    price_currency: 'usd',
-                    pay_currency: displaySendCrypto?.id || sendCryptoId, // Use id field for NOWPayments
-                    payout_address: destination.trim(),
-                    payout_currency: displayReceiveCrypto?.id || receiveCryptoId, // Use id field for NOWPayments
-                  }),
+                  body: JSON.stringify(payload),
                 });
 
                 if (!response.ok) {
                   const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-                  throw new Error(errorData.error || `Failed to create exchange order`);
+                  const errorMsg = errorData.error || `Failed to create exchange order`;
+                  
+                  // #region agent log
+                  fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ExchangeWidget.tsx:1072',message:'UI API Error Response',data:{status:response.status,errorMessage:errorMsg,errorData},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+                  // #endregion
+                  
+                  throw new Error(errorMsg);
                 }
 
                 const paymentData = await response.json();
@@ -1049,14 +1174,42 @@ export default function ExchangeWidget() {
                 router.push(`/order/${orderId}`);
               } catch (error: any) {
                 console.error('Exchange order creation error:', error);
-                // Show error inline instead of alert
-                // For now, we'll just log it - could add an error state if needed
-                // The button will remain disabled if validation fails
+                setIsCreatingOrder(false);
+                const formattedError = formatErrorMessage(error.message || 'Failed to create exchange order. Please try again.');
+                setOrderError(formattedError);
+                // Scroll to error if it's out of view
+                setTimeout(() => {
+                  const errorElement = document.getElementById('order-error-banner');
+                  if (errorElement) {
+                    errorElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                  }
+                }, 100);
               }
             }}
-            className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-3 sm:py-4 text-sm sm:text-base rounded-lg sm:rounded-xl transition-all shadow-lg shadow-blue-900/20 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-600"
+            disabled={
+              !sendAmount ||
+              isNaN(parseFloat(sendAmount)) ||
+              parseFloat(sendAmount) <= 0 ||
+              !!amountValidationError ||
+              !destination.trim() ||
+              !isDestinationValid ||
+              exchangeRate === null ||
+              limitsLoading ||
+              (!exchangeLimits && !limitsError) ||
+              !!exchangeRateError ||
+              !!destinationValidationError ||
+              isCreatingOrder
+            }
+            className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-3 sm:py-4 text-sm sm:text-base rounded-lg sm:rounded-xl transition-all shadow-lg shadow-blue-900/20 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-600 flex items-center justify-center gap-2"
           >
-            Exchange Now
+            {isCreatingOrder ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                <span>Creating Order...</span>
+              </>
+            ) : (
+              'Exchange Now'
+            )}
           </button>
           
           <p className="text-center text-[9px] sm:text-[10px] text-neutral-600 mt-2 sm:mt-3">

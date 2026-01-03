@@ -35,6 +35,12 @@ export async function POST(request: NextRequest) {
 
       // SERVER-SIDE VALIDATION: Check min/max limits from NOWPayments
       const sendAmount = parseFloat(body.send_amount);
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payment/route.ts:37',message:'API Received Request',data:{send_amount:body.send_amount,sendAmount,price_amount:body.price_amount,expected_receive:body.expected_receive,send_asset:body.send_asset,receive_asset:body.receive_asset,rate_type:body.rate_type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payment/route.ts:37',message:'API Received Payload',data:{send_amountRaw:body.send_amount,send_amountParsed:sendAmount,price_amount:body.price_amount,expected_receive:body.expected_receive,rate_type:body.rate_type,send_asset:body.send_asset,receive_asset:body.receive_asset},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      
       if (isNaN(sendAmount) || sendAmount <= 0) {
         return NextResponse.json(
           { error: 'send_amount must be a positive number' },
@@ -46,6 +52,10 @@ export async function POST(request: NextRequest) {
       const sendAsset = getAssetNetworkById(body.send_asset);
       const receiveAsset = getAssetNetworkById(body.receive_asset);
 
+      // #region agent log
+      fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payment/route.ts:46',message:'API Asset Resolution',data:{sendAssetId:sendAsset?.id,receiveAssetId:receiveAsset?.id,bodySendAsset:body.send_asset,bodyReceiveAsset:body.receive_asset},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
+
       if (!sendAsset || !receiveAsset) {
         return NextResponse.json(
           { error: 'Invalid asset IDs' },
@@ -56,10 +66,23 @@ export async function POST(request: NextRequest) {
       // Fetch real limits from NOWPayments API
       try {
         const isFixedRate = body.rate_type === 'fixed';
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payment/route.ts:58',message:'API Fetching Limits',data:{sendAssetId:sendAsset.id,receiveAssetId:receiveAsset.id,isFixedRate,rateTypeFromBody:body.rate_type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
+        
         const limits = await getExchangeLimits(sendAsset.id, receiveAsset.id, isFixedRate);
+
+        // #region agent log
+        fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payment/route.ts:60',message:'API Limits Fetched',data:{minAmount:limits.min_amount,maxAmount:limits.max_amount,sendAmount,comparison:sendAmount<limits.min_amount},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
 
         // Validate against min amount
         if (sendAmount < limits.min_amount) {
+          // #region agent log
+          fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payment/route.ts:62',message:'API Min Validation Failed',data:{sendAmount,minAmount:limits.min_amount,difference:sendAmount-limits.min_amount,priceAmount:body.price_amount,expectedReceive:body.expected_receive},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+          // #endregion
+          
           return NextResponse.json(
             {
               error: `Amount is below minimum. Minimum amount is ${limits.min_amount} ${sendAsset.symbol.toUpperCase()}`,

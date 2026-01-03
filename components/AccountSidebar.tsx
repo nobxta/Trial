@@ -34,7 +34,7 @@ export default function AccountSidebar({ onLogout, onNavigate }: AccountSidebarP
   };
 
   return (
-    <aside className="w-full h-full border-r border-white/5 bg-[#0a0a0a]/50 min-h-[calc(100vh-4rem)] p-4 flex flex-col">
+    <aside className="w-full h-full border-r border-white/5 bg-[#0a0a0a]/50 md:min-h-[calc(100vh-4rem)] p-4 flex flex-col">
       <nav className="space-y-1 flex-1">
         {sidebarItems.map((item) => {
           const Icon = item.icon;

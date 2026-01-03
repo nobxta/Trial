@@ -49,3 +49,4 @@ SMTP_PASS=your-smtp-password
 # will be your actual MintMove SMTP server credentials.
 ```
 
+

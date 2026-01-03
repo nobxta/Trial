@@ -43,3 +43,4 @@ COMMENT ON COLUMN blocked_ips.expires_at IS 'When the block expires (NULL = perm
 COMMENT ON COLUMN blocked_ips.is_active IS 'Whether the block is currently active';
 
 
+
