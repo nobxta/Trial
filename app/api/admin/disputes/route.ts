@@ -34,9 +34,50 @@ export async function GET(request: NextRequest) {
       throw new Error(error.message);
     }
 
-    // Get unread counts for each dispute
-    const disputesWithUnread = await Promise.all(
+    // Filter out live_chat disputes without actual issues
+    const validDisputes = await Promise.all(
       (disputes || []).map(async (dispute: any) => {
+        // For live_chat type, check if it has an actual issue
+        if (dispute.type === 'live_chat') {
+          // Check if description is the default placeholder
+          if (dispute.description === 'Live chat conversation') {
+            return null; // Filter out chats without issues
+          }
+          
+          // Also check if there are user messages with actual content (not just greetings)
+          const { data: messages } = await supabaseAdmin!
+            .from('dispute_messages')
+            .select('message, sender')
+            .eq('dispute_id', dispute.id)
+            .eq('sender', 'user')
+            .order('created_at', { ascending: true });
+          
+          if (!messages || messages.length === 0) {
+            return null; // No user messages, filter out
+          }
+          
+          // Check if all messages are just greetings
+          const greetings = ['hi', 'hello', 'hey', 'hi there', 'hello there', 'hey there'];
+          const hasNonGreeting = messages.some((msg: any) => {
+            const msgLower = msg.message.toLowerCase().trim();
+            return msgLower.length > 10 && !greetings.some(g => msgLower.includes(g));
+          });
+          
+          if (!hasNonGreeting) {
+            return null; // Only greetings, filter out
+          }
+        }
+        
+        return dispute;
+      })
+    );
+
+    // Filter out null values
+    const filteredDisputes = validDisputes.filter((d: any) => d !== null);
+
+    // Get unread counts for each valid dispute
+    const disputesWithUnread = await Promise.all(
+      filteredDisputes.map(async (dispute: any) => {
         const unreadCount = await getUnreadCount(dispute.id, 'admin');
         return {
           ...dispute,
@@ -45,18 +86,55 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    let countQuery = supabaseAdmin!
+    // Count calculation: Get all disputes first, then filter
+    // For accurate count, we need to apply the same filtering logic
+    let allDisputesQuery = supabaseAdmin!
       .from('disputes')
-      .select('*', { count: 'exact', head: true });
+      .select('id, type, description');
 
     if (status) {
-      countQuery = countQuery.eq('status', status);
+      allDisputesQuery = allDisputesQuery.eq('status', status);
     }
     if (orderId) {
-      countQuery = countQuery.ilike('order_id', `%${orderId}%`);
+      allDisputesQuery = allDisputesQuery.ilike('order_id', `%${orderId}%`);
     }
 
-    const { count } = await countQuery;
+    const { data: allDisputes } = await allDisputesQuery;
+
+    // Filter out live_chat disputes without issues (same logic as above)
+    const validDisputeIds = await Promise.all(
+      (allDisputes || []).map(async (dispute: any) => {
+        if (dispute.type === 'live_chat') {
+          if (dispute.description === 'Live chat conversation') {
+            return null;
+          }
+          
+          const { data: messages } = await supabaseAdmin!
+            .from('dispute_messages')
+            .select('message')
+            .eq('dispute_id', dispute.id)
+            .eq('sender', 'user')
+            .limit(5);
+          
+          if (!messages || messages.length === 0) {
+            return null;
+          }
+          
+          const greetings = ['hi', 'hello', 'hey', 'hi there', 'hello there', 'hey there'];
+          const hasNonGreeting = messages.some((msg: any) => {
+            const msgLower = msg.message.toLowerCase().trim();
+            return msgLower.length > 10 && !greetings.some(g => msgLower.includes(g));
+          });
+          
+          if (!hasNonGreeting) {
+            return null;
+          }
+        }
+        return dispute.id;
+      })
+    );
+
+    const count = validDisputeIds.filter((id: any) => id !== null).length;
 
     return NextResponse.json({
       disputes: disputesWithUnread,

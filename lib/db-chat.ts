@@ -45,10 +45,10 @@ export function hashIP(ip: string): string {
 /**
  * Create a new live chat dispute
  */
-export async function createLiveChat(userEmail?: string, userAgent?: string, ipHash?: string): Promise<DisputeChat> {
+export async function createLiveChat(userEmail?: string, userAgent?: string, ipHash?: string, issue?: string): Promise<DisputeChat> {
   const chatId = crypto.randomUUID();
 
-  // Create dispute
+  // Create dispute with issue as description
   const { data: dispute, error: disputeError } = await supabase
     .from('disputes')
     .insert({
@@ -57,7 +57,7 @@ export async function createLiveChat(userEmail?: string, userAgent?: string, ipH
       status: 'open',
       user_email: userEmail || null,
       title: 'Live Chat Support',
-      description: 'Live chat conversation',
+      description: issue || 'Live chat conversation',
     })
     .select()
     .single();
@@ -75,6 +75,11 @@ export async function createLiveChat(userEmail?: string, userAgent?: string, ipH
         ip_hash: ipHash,
         user_agent: userAgent || null,
       });
+  }
+
+  // Add the issue as the first user message if provided
+  if (issue) {
+    await addChatMessage(dispute.id, 'user', issue);
   }
 
   return dispute as DisputeChat;

@@ -178,6 +178,185 @@ function QuickSupport({ onStartChat }: { onStartChat: () => void }) {
   );
 }
 
+function PreChatView({
+  state,
+  messages,
+  onSendMessage,
+  onClose
+}: {
+  state: PreChatState;
+  messages: Array<{sender: 'user' | 'system', message: string}>;
+  onSendMessage: (msg: string) => void;
+  onClose: () => void;
+}) {
+  const [inputMessage, setInputMessage] = useState('');
+  const [sending, setSending] = useState(false);
+
+  const handleSend = async () => {
+    const message = inputMessage.trim();
+    if (!message || sending) return;
+
+    setSending(true);
+    try {
+      await onSendMessage(message);
+      setInputMessage('');
+    } catch (error) {
+      console.error('Failed to send message:', error);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-center min-h-[calc(100vh-12rem)] py-4 sm:py-8">
+      <div className="max-w-[800px] w-full mx-auto px-4">
+        <div className="rounded-xl sm:rounded-2xl bg-gradient-to-br from-white/[0.06] to-white/[0.02] backdrop-blur-xl border border-amber-500/20 shadow-2xl overflow-hidden animate-fade-in-up">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-white/[0.08] to-white/[0.04] border-b border-white/10 px-4 sm:px-6 py-3 sm:py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-blue-500/30 to-purple-500/30 flex items-center justify-center border border-white/10 shadow-lg flex-shrink-0">
+                  <svg className="w-4 h-4 sm:w-5 sm:h-5 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-base sm:text-lg font-semibold text-white truncate">MintMove Support</h2>
+                    <span className="inline-flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded-full bg-green-500/20 border border-green-500/30 flex-shrink-0">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
+                      <span className="text-[10px] font-medium text-green-400 hidden xs:inline">Online</span>
+                    </span>
+                  </div>
+                  <p className="text-[10px] sm:text-xs text-neutral-400 mt-0.5 truncate">Starting chat...</p>
+                </div>
+              </div>
+              <button
+                onClick={onClose}
+                className="p-2 hover:bg-white/10 rounded-lg transition-colors text-neutral-400 hover:text-white flex-shrink-0"
+                title="Close chat"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* Messages Container */}
+          <div className="h-[500px] sm:h-[600px] flex flex-col">
+            <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4 min-h-0 custom-chat-scrollbar">
+              {messages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full min-h-[300px] sm:min-h-[400px] text-center px-4">
+                  <div className="mb-4 w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 flex items-center justify-center border border-white/10">
+                    <svg className="w-7 h-7 sm:w-8 sm:h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                  </div>
+                  <p className="text-base sm:text-lg font-medium text-white mb-2">
+                    👋 Hi! Please start by saying "Hi"
+                  </p>
+                  <p className="text-xs sm:text-sm text-neutral-400 max-w-md">
+                    We'll ask about your issue after you greet us.
+                  </p>
+                </div>
+              ) : (
+                messages.map((msg, index) => {
+                  const isUser = msg.sender === 'user';
+                  return (
+                    <div
+                      key={index}
+                      className={`flex items-end gap-3 animate-fade-in ${isUser ? 'justify-end' : 'justify-start'}`}
+                    >
+                      {!isUser && (
+                        <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-blue-500/30 to-purple-500/30 flex items-center justify-center border border-white/10 flex-shrink-0 mb-1">
+                          <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z" />
+                          </svg>
+                        </div>
+                      )}
+                      <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-[75%] sm:max-w-[70%]`}>
+                        <div
+                          className={`rounded-2xl px-3 py-2 sm:px-4 sm:py-2.5 shadow-lg transition-all duration-200 ${
+                            isUser
+                              ? 'bg-gradient-to-br from-blue-600 to-blue-500 text-white rounded-br-md'
+                              : 'bg-white/[0.08] text-neutral-100 border border-white/10 backdrop-blur-sm rounded-bl-md'
+                          }`}
+                        >
+                          <div className="text-sm sm:text-[15px] whitespace-pre-wrap break-words leading-relaxed">
+                            {msg.message}
+                          </div>
+                        </div>
+                      </div>
+                      {isUser && (
+                        <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-amber-500/30 to-yellow-500/30 flex items-center justify-center border border-white/10 flex-shrink-0 mb-1">
+                          <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Input Area */}
+            <div className="border-t border-white/10 bg-gradient-to-b from-transparent to-black/20 backdrop-blur-sm px-3 sm:px-4 py-3 sm:py-4">
+              <div className="flex items-end gap-2">
+                <div className="flex-1 relative">
+                  <textarea
+                    value={inputMessage}
+                    onChange={(e) => setInputMessage(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    placeholder={state === 'waiting_for_hi' ? "Say 'Hi' to start..." : "Describe your issue..."}
+                    className="w-full bg-white/[0.05] border border-white/10 rounded-xl px-3 py-2.5 sm:px-4 sm:py-3 pr-10 sm:pr-12 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 text-neutral-100 placeholder:text-neutral-500 text-sm transition-all duration-200"
+                    rows={1}
+                    disabled={sending}
+                    maxLength={5000}
+                    style={{
+                      minHeight: '44px',
+                      maxHeight: '120px',
+                    }}
+                    onInput={(e) => {
+                      const target = e.target as HTMLTextAreaElement;
+                      target.style.height = 'auto';
+                      target.style.height = `${Math.min(target.scrollHeight, 120)}px`;
+                    }}
+                  />
+                </div>
+                <button
+                  onClick={handleSend}
+                  disabled={!inputMessage.trim() || sending}
+                  className="px-4 py-2.5 sm:px-5 sm:py-3 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white rounded-xl disabled:from-white/5 disabled:to-white/5 disabled:text-neutral-500 disabled:cursor-not-allowed transition-all duration-200 font-medium shadow-lg hover:shadow-blue-500/20 disabled:shadow-none flex items-center justify-center min-w-[50px] sm:min-w-[60px]"
+                >
+                  {sending ? (
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LiveChatView({ 
   chatId, 
   onClose 
@@ -427,10 +606,14 @@ function LiveChatView({
   );
 }
 
+type PreChatState = 'idle' | 'waiting_for_hi' | 'waiting_for_issue';
+
 export default function SupportPage() {
   const [showChat, setShowChat] = useState(false);
   const [chatId, setChatId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [preChatState, setPreChatState] = useState<PreChatState>('idle');
+  const [preChatMessages, setPreChatMessages] = useState<Array<{sender: 'user' | 'system', message: string}>>([]);
 
   useEffect(() => {
     // Check for existing chat cookie
@@ -453,30 +636,76 @@ export default function SupportPage() {
     }
   }, []);
 
-  const handleStartChat = async () => {
-    try {
-      const response = await fetch('/api/support/chat/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
+  const handleStartChat = () => {
+    setPreChatState('waiting_for_hi');
+    setPreChatMessages([]);
+  };
 
-      const data = await response.json();
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to create chat');
+  const handlePreChatMessage = async (message: string) => {
+    const trimmedMessage = message.trim().toLowerCase();
+    
+    if (preChatState === 'waiting_for_hi') {
+      // Check if user sent "hi" or similar greeting
+      const greetings = ['hi', 'hello', 'hey', 'hi there', 'hello there', 'hey there'];
+      const isGreeting = greetings.some(g => trimmedMessage.includes(g));
+      
+      if (isGreeting) {
+        setPreChatMessages([
+          { sender: 'user', message: message.trim() },
+          { sender: 'system', message: "Hello! How can we help you today? Please describe your issue." }
+        ]);
+        setPreChatState('waiting_for_issue');
+      } else {
+        setPreChatMessages([
+          { sender: 'user', message: message.trim() },
+          { sender: 'system', message: "Please start by saying 'Hi' to begin the chat." }
+        ]);
+      }
+    } else if (preChatState === 'waiting_for_issue') {
+      // User has provided their issue, now create the chat
+      if (message.trim().length < 5) {
+        setPreChatMessages([
+          ...preChatMessages,
+          { sender: 'user', message: message.trim() },
+          { sender: 'system', message: "Please provide more details about your issue (at least 5 characters)." }
+        ]);
+        return;
       }
 
-      setChatId(data.chat_id);
-      setShowChat(true);
-    } catch (err: any) {
-      console.error('Error creating chat:', err);
-      alert('Failed to start chat. Please try again.');
+      try {
+        const response = await fetch('/api/support/chat/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ issue: message.trim() }),
+        });
+
+        const data = await response.json();
+        if (!data.success) {
+          throw new Error(data.error || 'Failed to create chat');
+        }
+
+        setChatId(data.chat_id);
+        setShowChat(true);
+        setPreChatState('idle');
+        setPreChatMessages([]);
+      } catch (err: any) {
+        console.error('Error creating chat:', err);
+        setPreChatMessages([
+          ...preChatMessages,
+          { sender: 'system', message: 'Failed to start chat. Please try again.' }
+        ]);
+      }
     }
   };
 
   const handleCloseChat = () => {
     setShowChat(false);
     // Don't clear cookie - allow restoration
+  };
+
+  const handleClosePreChat = () => {
+    setPreChatState('idle');
+    setPreChatMessages([]);
   };
 
   if (loading) {
@@ -504,6 +733,13 @@ export default function SupportPage() {
           
           {showChat && chatId ? (
             <LiveChatView chatId={chatId} onClose={handleCloseChat} />
+          ) : preChatState !== 'idle' ? (
+            <PreChatView 
+              state={preChatState}
+              messages={preChatMessages}
+              onSendMessage={handlePreChatMessage}
+              onClose={handleClosePreChat}
+            />
           ) : (
             <>
               <EmailSupport />

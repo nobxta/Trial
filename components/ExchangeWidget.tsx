@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { ArrowDown, Copy, CheckCircle, BookOpen, X, Check, AlertTriangle } from "lucide-react";
 import CryptoSelector from "./CryptoSelector";
 import { applyFee } from "@/lib/pricing";
@@ -89,8 +89,61 @@ const cryptoToNetwork = (crypto: SupportedCrypto): Network => {
   };
 };
 
+// Helper function to find crypto ID from symbol and network string
+// Supports formats like "XMR", "BTC", "ETH", "USDT_TRC20", "USDT_ERC20"
+const findCryptoIdFromParam = (param: string): string | null => {
+  if (!param) return null;
+  
+  // Handle network-specific formats like "USDT_TRC20" or "USDT_ERC20"
+  if (param.includes('_')) {
+    const [symbol, networkCode] = param.split('_');
+    const networkMap: Record<string, string> = {
+      'TRC20': 'Tron',
+      'ERC20': 'Ethereum',
+      'BSC': 'BNB Smart Chain',
+      'BASE': 'Base',
+      'ARB': 'Arbitrum',
+      'POLYGON': 'Polygon',
+      'OPTIMISM': 'Optimism',
+      'SOL': 'Solana',
+    };
+    const network = networkMap[networkCode.toUpperCase()];
+    if (network) {
+      const cryptos = getCryptosBySymbol(symbol.toUpperCase());
+      const crypto = cryptos.find(c => c.network === network);
+      return crypto?.id || null;
+    }
+  }
+  
+  // Handle simple symbol formats like "XMR", "BTC", "ETH"
+  const symbol = param.toUpperCase();
+  const networkMap: Record<string, string> = {
+    'XMR': 'Monero',
+    'BTC': 'Bitcoin',
+    'ETH': 'Ethereum',
+    'LTC': 'Litecoin',
+    'DOGE': 'Dogecoin',
+    'BCH': 'Bitcoin Cash',
+    'DASH': 'Dash',
+    'ZEC': 'Zcash',
+  };
+  
+  const network = networkMap[symbol];
+  if (network) {
+    const cryptos = getCryptosBySymbol(symbol);
+    const crypto = cryptos.find(c => c.network === network);
+    return crypto?.id || null;
+  }
+  
+  // Fallback: try to find any crypto with this symbol
+  const cryptos = getCryptosBySymbol(symbol);
+  return cryptos[0]?.id || null;
+};
+
 export default function ExchangeWidget() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
   
   const [sendAmount, setSendAmount] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -100,7 +153,7 @@ export default function ExchangeWidget() {
     return "0.1";
   });
 
-  // Get initial crypto IDs from localStorage or defaults
+  // Get initial crypto IDs from localStorage or defaults (URL params handled in useEffect)
   const getInitialSendCryptoId = (): string => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('mintmove_sendCryptoId');
@@ -137,6 +190,32 @@ export default function ExchangeWidget() {
     const defaults = getValidDefaultCryptoIds();
     return getCryptoById(defaults.receiveId);
   }, [receiveCryptoId]);
+
+  // Handle URL parameters - react to changes in pathname and searchParams
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    // Check URL parameters from both sources to ensure we catch all changes
+    const params = new URLSearchParams(window.location.search);
+    const fromParam = searchParams.get('from') || params.get('from');
+    const toParam = searchParams.get('to') || params.get('to');
+    
+    if (fromParam) {
+      const cryptoId = findCryptoIdFromParam(fromParam);
+      if (cryptoId && getCryptoById(cryptoId)) {
+        setSendCryptoId(cryptoId);
+        localStorage.setItem('mintmove_sendCryptoId', cryptoId);
+      }
+    }
+    
+    if (toParam) {
+      const cryptoId = findCryptoIdFromParam(toParam);
+      if (cryptoId && getCryptoById(cryptoId)) {
+        setReceiveCryptoId(cryptoId);
+        localStorage.setItem('mintmove_receiveCryptoId', cryptoId);
+      }
+    }
+  }, [searchParams, pathname]); // React to both searchParams and pathname changes
 
   // Ensure valid cryptos are always selected (fixes stuck loading state)
   useEffect(() => {

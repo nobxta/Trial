@@ -21,7 +21,7 @@ export default function Footer() {
       />
       <div className="absolute inset-0 bg-[#050505]/90 z-0"></div>
       <div className="max-w-7xl mx-auto px-4 py-12 relative z-10">
-        <div className="grid md:grid-cols-4 gap-8 mb-8">
+        <div className="grid md:grid-cols-5 gap-8 mb-8">
           <div className="col-span-1 md:col-span-1">
             <div className="flex items-center gap-2 mb-4">
               <Image
@@ -37,35 +37,45 @@ export default function Footer() {
             </p>
           </div>
           <div>
-            <h4 className="text-xs font-semibold text-white uppercase tracking-wider mb-4">Exchange</h4>
-            <ul className="space-y-2 text-xs text-neutral-400">
-              <li><Link href="/" className="hover:text-blue-400 transition-colors">Buy Crypto</Link></li>
-              <li><Link href="/" className="hover:text-blue-400 transition-colors">Sell Crypto</Link></li>
-              <li><Link href="/" className="hover:text-blue-400 transition-colors">Swap Pairs</Link></li>
-              <li><Link href="/docs/rate-limits" className="hover:text-blue-400 transition-colors">Fees & Limits</Link></li>
-            </ul>
-          </div>
-          <div>
             <h4 className="text-xs font-semibold text-white uppercase tracking-wider mb-4">Company</h4>
             <ul className="space-y-2 text-xs text-neutral-400">
               <li><Link href="/about" className="hover:text-blue-400 transition-colors">About</Link></li>
-              <li><Link href="/blog" className="hover:text-blue-400 transition-colors">Blog</Link></li>
-              <li><Link href="/faq" className="hover:text-blue-400 transition-colors">FAQ</Link></li>
-              <li><Link href="/docs" className="hover:text-blue-400 transition-colors">API</Link></li>
-              <li><Link href="/support" className="hover:text-blue-400 transition-colors">Support</Link></li>
+              <li><Link href="/about" className="hover:text-blue-400 transition-colors">Our Brand</Link></li>
+              <li><Link href="/account/affiliate" className="hover:text-blue-400 transition-colors">Affiliate Program</Link></li>
             </ul>
           </div>
           <div>
             <h4 className="text-xs font-semibold text-white uppercase tracking-wider mb-4">Legal</h4>
             <ul className="space-y-2 text-xs text-neutral-400">
-              <li><Link href="/privacy-policy" className="hover:text-blue-400 transition-colors">Privacy Policy</Link></li>
               <li><Link href="/terms-of-service" className="hover:text-blue-400 transition-colors">Terms of Service</Link></li>
-              <li><Link href="/docs/security" className="hover:text-blue-400 transition-colors">AML/KYC</Link></li>
+              <li><Link href="/privacy-policy" className="hover:text-blue-400 transition-colors">Privacy Policy</Link></li>
+              <li><Link href="/account/affiliate" className="hover:text-blue-400 transition-colors">Affiliate Program Terms</Link></li>
+              <li><Link href="/docs" className="hover:text-blue-400 transition-colors">API Terms of Use</Link></li>
+            </ul>
+          </div>
+          <div>
+            <h4 className="text-xs font-semibold text-white uppercase tracking-wider mb-4">Popular</h4>
+            <ul className="space-y-2 text-xs text-neutral-400">
+              <li><Link href="/blog" className="hover:text-blue-400 transition-colors">Blog</Link></li>
+              <li><Link href="/?from=XMR&to=BTC" className="hover:text-blue-400 transition-colors">XMR to BTC</Link></li>
+              <li><Link href="/?from=BTC&to=XMR" className="hover:text-blue-400 transition-colors">BTC to XMR</Link></li>
+              <li><Link href="/?from=ETH&to=XMR" className="hover:text-blue-400 transition-colors">ETH to XMR</Link></li>
+              <li><Link href="/?from=ETH&to=BTC" className="hover:text-blue-400 transition-colors">ETH to BTC</Link></li>
+              <li><Link href="/?from=USDT_TRC20&to=USDT_ERC20" className="hover:text-blue-400 transition-colors">USDT(TRX) to USDT(ETH)</Link></li>
+              <li><Link href="/?from=USDT_ERC20&to=USDT_TRC20" className="hover:text-blue-400 transition-colors">USDT(ETH) to USDT(TRX)</Link></li>
+            </ul>
+          </div>
+          <div>
+            <h4 className="text-xs font-semibold text-white uppercase tracking-wider mb-4">Support</h4>
+            <ul className="space-y-2 text-xs text-neutral-400">
+              <li><Link href="/faq" className="hover:text-blue-400 transition-colors">FAQ</Link></li>
+              <li><Link href="/support" className="hover:text-blue-400 transition-colors">Support</Link></li>
+              <li><Link href="/docs" className="hover:text-blue-400 transition-colors">API</Link></li>
             </ul>
           </div>
         </div>
         <div className="flex flex-col md:flex-row items-center justify-between pt-8 border-t border-white/5 gap-4">
-          <p className="text-[10px] text-neutral-600">© 2024 MintMove Technologies. All rights reserved.</p>
+          <p className="text-[10px] text-neutral-600">© 2018–2026 MintMove. All rights reserved.</p>
           <div className="flex items-center gap-4">
             <div className="flex gap-3 text-xs text-neutral-400">
               <Link href="/sign-in" className="hover:text-blue-400 transition-colors">Sign in</Link>

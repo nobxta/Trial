@@ -42,3 +42,6 @@ next-env.d.ts
 !/data/supported-cryptos.json
 !/data/supportedCoins.json
 !/data/coingeckoMap.json
+
+# cursor
+.cursor/debug.log

@@ -51,10 +51,18 @@ export default function CryptoIcon({ symbol, image, imageUrl, className = "w-6 h
   const [loading, setLoading] = useState(true);
   const imgRef = useRef<HTMLImageElement | null>(null);
   
+  // #region agent log
+  fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CryptoIcon.tsx:49',message:'CryptoIcon render',data:{symbol,hasImage:!!image,hasImageUrl:!!imageUrl,error},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
+  
   // Reset error state when image changes
   useEffect(() => {
     setError(false);
     setLoading(true);
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CryptoIcon.tsx:56',message:'useEffect reset',data:{symbol,image,imageUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
     
     // Check if image is already loaded (cached images)
     if (imgRef.current && imgRef.current.complete) {
@@ -66,15 +74,21 @@ export default function CryptoIcon({ symbol, image, imageUrl, className = "w-6 h
   const lowerSymbol = symbol.toLowerCase();
   
   // Priority 1: Use imageUrl (NOWPayments hosted SVG) if provided
-  // Priority 2: Use provided image (from JSON, local path)
-  // Priority 3: Try local PNG from /coins/{symbol}.png
-  // Priority 4: Fallback to CryptoCompare CDN
+  // Priority 2: Use provided image (from JSON, local path) - ONLY if explicitly provided
+  // Priority 3: Fallback to CryptoCompare CDN
+  // Priority 4: Fallback icon
   const nowPaymentsImageUrl = imageUrl || (image && image.startsWith('http') ? image : null);
-  const localImagePath = image && !image.startsWith('http') ? image : `/coins/${lowerSymbol}.png`;
+  // Only use local image if explicitly provided via image prop (not default /coins/{symbol}.png)
+  const hasExplicitLocalImage = image && !image.startsWith('http') && !image.startsWith('/coins/');
+  const localImagePath = hasExplicitLocalImage ? image : null;
   const imageId = cryptocompareImageIds[upperSymbol];
   const logoUrl = imageId 
     ? `https://www.cryptocompare.com/media/${imageId}/${lowerSymbol}.png`
     : null;
+
+  // #region agent log
+  fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CryptoIcon.tsx:80',message:'Image path calculation',data:{nowPaymentsImageUrl,localImagePath,hasExplicitLocalImage,logoUrl,hasImageId:!!imageId,error,symbol},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
 
   // Default fallback icon
   const DefaultFallbackIcon = ({ className }: { className?: string }) => {
@@ -147,6 +161,9 @@ export default function CryptoIcon({ symbol, image, imageUrl, className = "w-6 h
 
   // Priority 1: Use NOWPayments hosted image URL (SVG)
   if (nowPaymentsImageUrl && !error) {
+    // #region agent log
+    fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CryptoIcon.tsx:149',message:'Rendering Priority 1 NOWPayments',data:{symbol,nowPaymentsImageUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     return (
       <div className={`${className} rounded-full flex items-center justify-center overflow-hidden bg-neutral-800 relative`} style={{ backgroundColor: color + '20' }}>
         {loading && (
@@ -158,6 +175,9 @@ export default function CryptoIcon({ symbol, image, imageUrl, className = "w-6 h
           alt={symbol}
           className={`object-contain w-full h-full ${loading ? 'opacity-0' : 'opacity-100'} transition-opacity duration-200`}
           onError={() => {
+            // #region agent log
+            fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CryptoIcon.tsx:160',message:'Priority 1 onError',data:{symbol,nowPaymentsImageUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
             setError(true);
             setLoading(false);
           }}
@@ -170,8 +190,11 @@ export default function CryptoIcon({ symbol, image, imageUrl, className = "w-6 h
     );
   }
 
-  // Priority 2: Use local image path (from JSON or default)
+  // Priority 2: Use local image path (from JSON) - ONLY if explicitly provided
   if (localImagePath && !imageUrl && !error) {
+    // #region agent log
+    fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CryptoIcon.tsx:174',message:'Rendering Priority 2 local image',data:{symbol,localImagePath},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     return (
       <div className={`${className} rounded-full flex items-center justify-center overflow-hidden bg-neutral-800 relative`} style={{ backgroundColor: color + '20' }}>
         {loading && (
@@ -184,10 +207,18 @@ export default function CryptoIcon({ symbol, image, imageUrl, className = "w-6 h
           height={size}
           className={`object-cover ${loading ? 'opacity-0' : 'opacity-100'} transition-opacity duration-200`}
           onError={() => {
+            // #region agent log
+            fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CryptoIcon.tsx:186',message:'Priority 2 onError',data:{symbol,localImagePath},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+            // #endregion
             setError(true);
             setLoading(false);
           }}
-          onLoad={() => setLoading(false)}
+          onLoad={() => {
+            // #region agent log
+            fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CryptoIcon.tsx:190',message:'Priority 2 onLoad',data:{symbol,localImagePath},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+            // #endregion
+            setLoading(false);
+          }}
           loading="lazy"
         />
       </div>
@@ -196,6 +227,9 @@ export default function CryptoIcon({ symbol, image, imageUrl, className = "w-6 h
 
   // Priority 3: Fallback to CryptoCompare CDN if local image failed
   if (logoUrl && !error) {
+    // #region agent log
+    fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CryptoIcon.tsx:197',message:'Rendering Priority 3 CryptoCompare',data:{symbol,logoUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
     return (
       <div className={`${className} rounded-full flex items-center justify-center overflow-hidden relative`} style={{ backgroundColor: color + '20' }}>
         {loading && (
@@ -206,10 +240,18 @@ export default function CryptoIcon({ symbol, image, imageUrl, className = "w-6 h
           alt={symbol}
           className={`object-contain w-full h-full ${loading ? 'opacity-0' : 'opacity-100'} transition-opacity duration-200`}
           onError={() => {
+            // #region agent log
+            fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CryptoIcon.tsx:208',message:'Priority 3 onError',data:{symbol,logoUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+            // #endregion
             setError(true);
             setLoading(false);
           }}
-          onLoad={() => setLoading(false)}
+          onLoad={() => {
+            // #region agent log
+            fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CryptoIcon.tsx:212',message:'Priority 3 onLoad',data:{symbol,logoUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+            // #endregion
+            setLoading(false);
+          }}
           loading="lazy"
         />
       </div>
@@ -217,5 +259,8 @@ export default function CryptoIcon({ symbol, image, imageUrl, className = "w-6 h
   }
 
   // Priority 4: Fallback icon
+  // #region agent log
+  fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CryptoIcon.tsx:219',message:'Rendering Priority 4 fallback',data:{symbol,hasLogoUrl:!!logoUrl,error},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+  // #endregion
   return <FallbackIcon className={className} />;
 }

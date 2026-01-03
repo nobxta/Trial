@@ -5,6 +5,7 @@ import {
   getExchangeLimitsFromCache,
   upsertExchangeLimits,
   areLimitsStale,
+  getExchangeLimitsWithFallback,
 } from '@/lib/db-exchange-limits';
 
 /**
@@ -19,9 +20,13 @@ async function refreshLimitsInBackground(
   try {
     const limits = await getExchangeLimits(currencyFrom, currencyTo, isFixedRate);
     await upsertExchangeLimits(currencyFrom, currencyTo, isFixedRate, limits);
-  } catch (error) {
-    // Log error but don't throw - we'll return cached data
-    console.error(`Background limit refresh error for ${currencyFrom}->${currencyTo}:`, error);
+  } catch (error: any) {
+    // Suppress errors for unsupported pairs (400 errors) - these are expected
+    // Only log unexpected errors (500+)
+    const isUnsupportedPair = error.statusCode === 400 || error.isUnsupportedPair;
+    if (!isUnsupportedPair) {
+      console.error(`Background limit refresh error for ${currencyFrom}->${currencyTo}:`, error);
+    }
   }
 }
 
@@ -71,13 +76,24 @@ export async function GET(request: NextRequest) {
     const currencyFrom = sendCrypto.id;
     const currencyTo = receiveCrypto.id;
 
+    // Prevent same currency exchanges (check by symbol, not just ID)
+    // e.g., USDT TRC20 -> USDT ERC20 should be blocked
+    if (sendCrypto.symbol === receiveCrypto.symbol) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Cannot exchange ${sendCrypto.symbol} to ${receiveCrypto.symbol} (same currency)`,
+          isUnsupportedPair: true,
+        },
+        { status: 400 }
+      );
+    }
+
     const isFixedRate = isFixedRateParam === 'true';
 
-    // Check database cache first
-    let cachedLimits = await getExchangeLimitsFromCache(currencyFrom, currencyTo, isFixedRate);
-    
-    // Check if limits are stale (> 10 minutes old)
-    const stale = await areLimitsStale(currencyFrom, currencyTo, isFixedRate, 10);
+    // Check if we have cached limits (to determine if result is cached)
+    const cachedLimits = await getExchangeLimitsFromCache(currencyFrom, currencyTo, isFixedRate);
+    const stale = cachedLimits ? await areLimitsStale(currencyFrom, currencyTo, isFixedRate, 10) : false;
     
     // If stale, refresh in background (don't wait for it)
     // This ensures fresh limits for the next request while returning cached data instantly
@@ -88,40 +104,20 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // If we have cached limits (even if stale), return them immediately
-    if (cachedLimits) {
-      const limits: ExchangeLimits = {
-        min_amount: cachedLimits.minAmount,
-        max_amount: cachedLimits.maxAmount ?? undefined,
-        min_amount_fiat: cachedLimits.minAmountFiat ?? undefined,
-        max_amount_fiat: cachedLimits.maxAmountFiat ?? undefined,
-      };
-
-      return NextResponse.json({
-        success: true,
-        limits,
-        cached: true,
-        stale: stale,
-        last_updated: cachedLimits.updatedAt,
-      });
-    }
-
-    // No cache available - fetch from NOWPayments API
+    // Use the new function that checks DB first, then fetches from API if not found
     try {
-      const limits = await getExchangeLimits(currencyFrom, currencyTo, isFixedRate);
-
-      // Save to database cache (async, don't wait)
-      upsertExchangeLimits(currencyFrom, currencyTo, isFixedRate, limits).catch(err => {
-        console.error('Failed to cache limits:', err);
-      });
+      const limits = await getExchangeLimitsWithFallback(currencyFrom, currencyTo, isFixedRate);
+      const wasCached = cachedLimits !== null;
 
       return NextResponse.json({
         success: true,
         limits,
-        cached: false,
+        cached: wasCached,
+        stale: stale,
+        last_updated: cachedLimits?.updatedAt,
       });
     } catch (error: any) {
-      // API call failed and no cache available
+      // API call failed
       console.error('Failed to fetch exchange limits:', error);
       
       // Check if this is an unsupported currency pair (400 from NOWPayments)

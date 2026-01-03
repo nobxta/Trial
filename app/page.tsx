@@ -1,53 +1,27 @@
-"use client";
-
-import { useEffect } from "react";
 import Header from "@/components/Header";
 import ExchangeWidget from "@/components/ExchangeWidget";
 import Footer from "@/components/Footer";
 import FAQ from "@/components/FAQ";
-import { Shield, Zap, Lock, TrendingUp, CheckCircle } from "lucide-react";
+import ScrollFadeIn from "@/components/ScrollFadeIn";
+import ProtectedBackground from "@/components/ProtectedBackground";
+import RecentTransactions from "@/components/RecentTransactions";
+import { Zap, Lock, TrendingUp, CheckCircle } from "lucide-react";
+import { Suspense } from "react";
 
 export default function Home() {
-  useEffect(() => {
-    const elements = document.querySelectorAll('.scroll-fade-in');
-    
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add('visible');
-          }
-        });
-      },
-      { threshold: 0.1 }
-    );
-
-    elements.forEach((el) => observer.observe(el));
-
-    return () => {
-      observer.disconnect();
-    };
-  }, []);
-
   return (
     <div className="min-h-screen bg-[#050505] text-[#d4d4d4] selection:bg-blue-500/30 selection:text-blue-200 relative overflow-hidden">
+      <ScrollFadeIn />
       <div className="relative z-10">
         <Header />
         
         <main className="flex-grow relative overflow-hidden">
           {/* Hero Section - Above the Fold */}
           <section className="relative px-4 pt-20 sm:pt-24 pb-8 sm:pb-12 bg-[#050505] overflow-hidden">
-            <div 
-              className="absolute inset-0 protected-bg pointer-events-none"
-              style={{
-                backgroundImage: 'url(/images/outer-space-background-with-planets-and-stars-free-vector.jpg)',
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-                zIndex: 1,
-                opacity: 0.60,
-              }}
-              onContextMenu={(e) => e.preventDefault()}
-              onDragStart={(e) => e.preventDefault()}
+            <ProtectedBackground
+              backgroundImage="/images/outer-space-background-with-planets-and-stars-free-vector.jpg"
+              opacity={0.60}
+              zIndex={1}
             />
             <div className="absolute inset-0 bg-[#050505]/90 z-[2]"></div>
             
@@ -60,7 +34,9 @@ export default function Home() {
               </p>
               
               <div className="w-full">
-                <ExchangeWidget />
+                <Suspense fallback={<div className="h-[600px] flex items-center justify-center"><div className="text-neutral-400">Loading exchange...</div></div>}>
+                  <ExchangeWidget />
+                </Suspense>
               </div>
             </div>
           </section>
@@ -100,17 +76,10 @@ export default function Home() {
 
           {/* 3 Key Benefits */}
           <section className="relative py-8 sm:py-12 md:py-16 px-4 bg-[#000000]">
-            <div 
-              className="absolute inset-0 protected-bg pointer-events-none"
-              style={{
-                backgroundImage: 'url(/images/istockphoto-1197202388-612x612.jpg)',
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-                zIndex: 0,
-                opacity: 0.05,
-              }}
-              onContextMenu={(e) => e.preventDefault()}
-              onDragStart={(e) => e.preventDefault()}
+            <ProtectedBackground
+              backgroundImage="/images/istockphoto-1197202388-612x612.jpg"
+              opacity={0.05}
+              zIndex={0}
             />
             <div className="max-w-7xl mx-auto relative z-10">
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
@@ -181,19 +150,29 @@ export default function Home() {
             </div>
           </section>
 
+          {/* Recent Transactions Section */}
+          <section className="relative py-8 sm:py-12 md:py-16 px-4 bg-[#000000] border-t border-white/5 overflow-hidden">
+            <ProtectedBackground
+              backgroundImage="/images/istockphoto-1197202388-612x612.jpg"
+              opacity={0.03}
+              zIndex={0}
+            />
+            <div className="max-w-6xl mx-auto relative z-10">
+              <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-white text-center mb-6 sm:mb-8 scroll-fade-in">
+                Recent Transactions
+              </h2>
+              <div className="glass-panel rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-white/10">
+                <RecentTransactions />
+              </div>
+            </div>
+          </section>
+
           {/* FAQ Section */}
           <section className="relative py-12 sm:py-16 md:py-20 px-4 bg-[#000000] border-t border-white/5">
-            <div 
-              className="absolute inset-0 protected-bg pointer-events-none"
-              style={{
-                backgroundImage: 'url(/images/space-background-with-planet-landscape-and-stars-free-vector.jpg)',
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-                zIndex: 0,
-                opacity: 0.05,
-              }}
-              onContextMenu={(e) => e.preventDefault()}
-              onDragStart={(e) => e.preventDefault()}
+            <ProtectedBackground
+              backgroundImage="/images/space-background-with-planet-landscape-and-stars-free-vector.jpg"
+              opacity={0.05}
+              zIndex={0}
             />
             <div className="max-w-4xl mx-auto relative z-10">
               <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white text-center mb-8 sm:mb-12 scroll-fade-in">

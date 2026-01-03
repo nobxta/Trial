@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { sendEmailViaSMTP } from '@/lib/email';
+import type { EmailCategory } from '@/lib/email-from';
 
 /**
  * Vercel Cron Job: Process email queue
@@ -77,11 +78,13 @@ export async function GET(request: NextRequest) {
     for (const email of pendingEmails) {
       try {
         // Attempt to send email via SMTP
+        // Note: email_queue table doesn't store category, so we use GENERIC as default
         const result = await sendEmailViaSMTP({
           to: email.to_email,
           subject: email.subject,
           html: email.html,
           text: email.text || undefined,
+          category: 'GENERIC' as EmailCategory,
         });
 
         if (result.success) {

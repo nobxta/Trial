@@ -53,10 +53,14 @@ export async function POST(request: NextRequest) {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `${protocol}://${host}`;
     const verificationUrl = `${baseUrl}/verify-email?token=${verificationToken}`;
 
-    // Send verification email (non-blocking, don't wait for it)
-    sendVerificationEmail(user.email, verificationToken, request).catch((err) => {
+    // Send verification email (instant synchronous send)
+    try {
+      await sendVerificationEmail(user.email, verificationToken, request);
+    } catch (err) {
       console.error('Failed to send verification email:', err);
-    });
+      // Continue with signup even if email fails (user account is created)
+      // Error is logged for monitoring
+    }
 
     // Cleanup unverified accounts older than 1 hour (non-blocking)
     cleanupUnverifiedAccounts().catch(() => {

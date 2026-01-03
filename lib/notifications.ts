@@ -65,7 +65,7 @@ export async function sendNotification(
       const { text, html } = getOrderStatusEmailTemplate(orderId, status, notification.link);
       const emailSubject = `Order ${orderId} - Status Update`;
       
-      return await sendGenericEmail(user.email, emailSubject, html, text, request);
+      return await sendGenericEmail(user.email, emailSubject, html, text, 'TRANSACTIONAL', request);
     } else {
       // Generic notification email (for promotions, affiliate, etc.)
       const emailSubject = notification.title;
@@ -79,7 +79,15 @@ export async function sendNotification(
       `;
       const emailText = `${notification.title}\n\n${notification.message}${notification.link ? `\n\nView details: ${notification.link}` : ''}\n\n— MintMove Team`;
       
-      return await sendGenericEmail(user.email, emailSubject, emailHtml, emailText, request);
+      // Determine category based on notification type
+      let category: 'MARKETING' | 'ADMIN' | 'SUPPORT' | 'GENERIC' = 'GENERIC';
+      if (notification.type === 'promotion') {
+        category = 'MARKETING';
+      } else if (notification.type === 'affiliate_earnings') {
+        category = 'MARKETING';
+      }
+      
+      return await sendGenericEmail(user.email, emailSubject, emailHtml, emailText, category, request);
     }
   } catch (error) {
     console.error('Failed to send notification:', error);
@@ -121,9 +129,9 @@ export async function notifyOrderStatus(
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
   const orderLink = `${baseUrl}/order/${orderId}`;
 
-  // Queue email notification
-  // Note: Idempotency is marked BEFORE queuing to prevent duplicate queue entries
-  // If queueing fails, idempotency is already marked (at-most-once semantics)
+  // Send email notification immediately via SMTP
+  // Note: Idempotency is marked BEFORE sending to prevent duplicate emails
+  // If sending fails, idempotency is already marked (at-most-once semantics)
   return sendNotification(
     userId,
     {

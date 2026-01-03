@@ -13,12 +13,21 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const userEmail = body.email || undefined;
+    const issue = body.issue || undefined;
     const userAgent = request.headers.get('user-agent') || undefined;
     const ip = getClientIP(request);
     const ipHash = hashIP(ip);
 
-    // Create new chat
-    const chat = await createLiveChat(userEmail, userAgent, ipHash);
+    // Issue is required to create a chat
+    if (!issue || issue.trim().length < 5) {
+      return NextResponse.json(
+        { success: false, error: 'Issue description is required (minimum 5 characters)' },
+        { status: 400 }
+      );
+    }
+
+    // Create new chat with issue
+    const chat = await createLiveChat(userEmail, userAgent, ipHash, issue.trim());
 
     // Set cookie
     const response = NextResponse.json({ 

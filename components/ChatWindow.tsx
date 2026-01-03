@@ -30,14 +30,56 @@ export default function ChatWindow({
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const lastMessageCountRef = useRef<number>(0);
+  const lastMessageIdRef = useRef<string | null>(null);
+  const shouldScrollRef = useRef<boolean>(true);
 
-  const scrollToBottom = () => {
+  const scrollToBottom = (force = false) => {
+    if (!force && !shouldScrollRef.current) return;
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  const checkIfNearBottom = () => {
+    if (!messagesContainerRef.current) return true;
+    const container = messagesContainerRef.current;
+    const threshold = 100; // pixels from bottom
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+    return isNearBottom;
+  };
+
   useEffect(() => {
-    scrollToBottom();
+    // Check if new messages were added
+    const currentMessageCount = messages.length;
+    const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : null;
+    
+    const hasNewMessages = 
+      currentMessageCount > lastMessageCountRef.current ||
+      (lastMessageId && lastMessageId !== lastMessageIdRef.current);
+
+    if (hasNewMessages) {
+      // Check if user is near bottom before scrolling
+      shouldScrollRef.current = checkIfNearBottom();
+      if (shouldScrollRef.current) {
+        scrollToBottom(true);
+      }
+    }
+
+    lastMessageCountRef.current = currentMessageCount;
+    lastMessageIdRef.current = lastMessageId;
   }, [messages]);
+
+  // Track scroll position to determine if user is reading older messages
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      shouldScrollRef.current = checkIfNearBottom();
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const handleSend = async () => {
     const message = inputMessage.trim();

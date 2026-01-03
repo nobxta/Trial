@@ -2,14 +2,15 @@ import nodemailer from 'nodemailer';
 import { NextRequest } from 'next/server';
 import { getBaseUrl } from './email-utils';
 import { getVerificationEmailTemplate } from './email-template';
-import { supabaseAdmin } from './supabase';
 import { getEmailSetting } from './email-settings';
+import { getFromHeader, type EmailCategory } from './email-from';
 
 let transporter: nodemailer.Transporter | null = null;
 
 /**
- * Queue email for sending (database-backed queue)
- * Inserts email into email_queue table for processing by cron job
+ * @deprecated Queue system removed - emails now send instantly
+ * This function is kept for reference but should not be called.
+ * Use sendEmailViaSMTP() directly instead.
  */
 export async function queueEmail({
   to,
@@ -22,44 +23,22 @@ export async function queueEmail({
   html: string;
   text?: string;
 }): Promise<boolean> {
-  if (!supabaseAdmin) {
-    console.error('❌ Cannot queue email: Supabase not configured');
-    return false;
-  }
-
-  try {
-    const { error } = await supabaseAdmin.from('email_queue').insert({
-      to_email: to,
-      subject: subject,
-      html: html,
-      text: text || null,
-      status: 'pending',
-      attempts: 0,
-      scheduled_at: new Date().toISOString(),
-    });
-
-    if (error) {
-      console.error('❌ Failed to queue email:', error);
-      return false;
-    }
-
-    console.log(`📬 Email queued for ${to}: ${subject}`);
-    return true;
-  } catch (error: any) {
-    console.error('❌ Error queueing email:', error);
-    return false;
-  }
+  console.error('❌ queueEmail() is deprecated - emails now send instantly. This should not be called.');
+  throw new Error('queueEmail() is deprecated. Use direct SMTP sending instead.');
 }
 
 /**
- * Actually send email via nodemailer (used by email worker)
- * This is the internal function that does the actual SMTP sending
+ * Send email via nodemailer SMTP (instant synchronous send)
+ * This is the main function that sends emails directly via SMTP
+ * 
+ * @param category - Email category (AUTH, TRANSACTIONAL, etc.) - determines sender address
  */
 export async function sendEmailViaSMTP({
   to,
   subject,
   html,
   text,
+  category,
   headers,
   messageId,
 }: {
@@ -67,18 +46,26 @@ export async function sendEmailViaSMTP({
   subject: string;
   html: string;
   text?: string;
+  category: EmailCategory;
   headers?: Record<string, string>;
   messageId?: string;
 }): Promise<{ success: boolean; messageId?: string; error?: string }> {
   if (!transporter) {
-    return { success: false, error: 'SMTP transporter not configured' };
+    const error = 'SMTP transporter not configured. Please set SMTP_USER and SMTP_PASS environment variables.';
+    console.error(`❌ [MintMove] Email failed to ${to} (${category}): ${error}`);
+    return { success: false, error };
   }
 
-  const fromEmail = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@mintmove.com';
-  const fromName = process.env.SMTP_FROM_NAME || 'MintMove';
+  // Get sender address from category mapping
+  const fromHeader = getFromHeader(category);
+  const fromEmail = fromHeader.match(/<(.+)>/)?.[1] || '';
+
+  console.log(`📧 [MintMove] Sending ${category} email`);
+  console.log(`   From: ${fromEmail}`);
+  console.log(`   To: ${to}`);
 
   const mailOptions = {
-    from: `"${fromName}" <${fromEmail}>`,
+    from: fromHeader,
     to: to,
     subject: subject,
     text: text || html.replace(/<[^>]*>/g, ''), // Strip HTML if no text provided
@@ -89,9 +76,12 @@ export async function sendEmailViaSMTP({
 
   try {
     const result = await transporter.sendMail(mailOptions);
+    console.log(`✅ [MintMove] Email sent to ${to} (${category}): ${subject}`);
     return { success: true, messageId: result.messageId };
   } catch (error: any) {
-    return { success: false, error: error.message || String(error) };
+    const errorMessage = error.message || String(error);
+    console.error(`❌ [MintMove] Email failed to ${to} (${category}): ${errorMessage}`);
+    return { success: false, error: errorMessage };
   }
 }
 
@@ -119,7 +109,7 @@ export async function sendVerificationEmail(
   email: string, 
   token: string, 
   request?: NextRequest
-) {
+): Promise<boolean> {
   // Check if verification emails are enabled
   const verificationEnabled = await getEmailSetting('verification_enabled', 'true');
   if (verificationEnabled !== 'true') {
@@ -134,72 +124,34 @@ export async function sendVerificationEmail(
   // Get professional email template
   const { text, html } = getVerificationEmailTemplate(verificationUrl, email);
   
-  // Development fallback: log the verification link if SMTP is not configured
+  // Check if SMTP is configured
   if (!transporter) {
-    console.log('\n=== EMAIL VERIFICATION (Development Mode) ===');
-    console.log(`To: ${email}`);
-    console.log(`Verification URL: ${verificationUrl}`);
-    console.log('==========================================\n');
-    return true;
+    const error = 'SMTP transporter not configured. Please set SMTP_USER and SMTP_PASS environment variables.';
+    console.error(`❌ Email failed to ${email}: ${error}`);
+    throw new Error(error);
   }
 
-  // In development, send immediately for faster testing
-  // In production, use the queue system for better reliability
-  if (process.env.NODE_ENV === 'development') {
-    try {
-      const result = await sendEmailViaSMTP({
-        to: email,
-        subject: 'Verify your MintMove account',
-        html: html,
-        text: text,
-      });
-
-      if (result.success) {
-        console.log(`✅ Verification email sent to ${email}`);
-        return true;
-      } else {
-        console.error(`❌ Failed to send verification email to ${email}:`, result.error);
-        // Fallback: log the link if sending fails
-        console.log('\n=== EMAIL VERIFICATION (Send Failed - Fallback) ===');
-        console.log(`To: ${email}`);
-        console.log(`Verification URL: ${verificationUrl}`);
-        console.log('==================================================\n');
-        return true; // Still return true so signup doesn't fail
-      }
-    } catch (error: any) {
-      console.error(`❌ Error sending verification email to ${email}:`, error);
-      // Fallback: log the link if sending fails
-      console.log('\n=== EMAIL VERIFICATION (Send Error - Fallback) ===');
-      console.log(`To: ${email}`);
-      console.log(`Verification URL: ${verificationUrl}`);
-      console.log('==================================================\n');
-      return true; // Still return true so signup doesn't fail
-    }
-  }
-
-  // Production: Queue email for processing by cron job
-  const queued = await queueEmail({
+  // Send email immediately via SMTP (same behavior in dev and production)
+  const result = await sendEmailViaSMTP({
     to: email,
     subject: 'Verify your MintMove account',
     html: html,
     text: text,
+    category: 'AUTH',
   });
 
-  if (!queued) {
-    // Fallback: log the link if queueing fails
-    console.log('\n=== EMAIL VERIFICATION (Queue Failed - Fallback) ===');
-    console.log(`To: ${email}`);
-    console.log(`Verification URL: ${verificationUrl}`);
-    console.log('==================================================\n');
+  if (!result.success) {
+    throw new Error(`Failed to send verification email: ${result.error}`);
   }
 
-  // Always return true so signup doesn't fail
   return true;
 }
 
 /**
  * Generic email sender function
- * Queues email for processing by cron job
+ * Sends email immediately via SMTP (same behavior in dev and production)
+ * 
+ * @param category - Email category (AUTH, TRANSACTIONAL, ADMIN, etc.) - determines sender address
  * 
  * Note: order_notifications_enabled setting is checked in notifications.ts
  * where sendGenericEmail is called for order notifications
@@ -209,26 +161,29 @@ export async function sendGenericEmail(
   subject: string,
   html: string,
   text?: string,
+  category: EmailCategory = 'GENERIC',
   request?: NextRequest
 ): Promise<boolean> {
-  // Development fallback: log if SMTP is not configured
+  // Check if SMTP is configured
   if (!transporter) {
-    console.log('\n=== EMAIL (Development Mode) ===');
-    console.log(`To: ${to}`);
-    console.log(`Subject: ${subject}`);
-    console.log(`Text: ${text || '(HTML only)'}`);
-    console.log('================================\n');
-    return true;
+    const error = 'SMTP transporter not configured. Please set SMTP_USER and SMTP_PASS environment variables.';
+    console.error(`❌ Email failed to ${to}: ${error}`);
+    throw new Error(error);
   }
 
-  // Queue email instead of sending immediately
-  const queued = await queueEmail({
+  // Send email immediately via SMTP
+  const result = await sendEmailViaSMTP({
     to: to,
     subject: subject,
     html: html,
     text: text,
+    category: category,
   });
 
-  return queued;
+  if (!result.success) {
+    throw new Error(`Failed to send email: ${result.error}`);
+  }
+
+  return true;
 }
 

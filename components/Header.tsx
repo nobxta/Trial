@@ -22,9 +22,10 @@ export default function Header() {
         </div>
 
         <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-neutral-400">
-          <Link href="/about" className="hover:text-white transition-colors">How it works</Link>
-          <Link href="/track-order" className="hover:text-white transition-colors">Track Order</Link>
-          <Link href="/docs/api/exchange-rate" className="hover:text-white transition-colors">Rates</Link>
+          <Link href="/about" className="hover:text-white transition-colors">About</Link>
+          <Link href="/blog" className="hover:text-white transition-colors">Blog</Link>
+          <Link href="/faq" className="hover:text-white transition-colors">FAQ</Link>
+          <Link href="/docs" className="hover:text-white transition-colors">API</Link>
           <Link href="/support" className="hover:text-white transition-colors">Support</Link>
         </nav>
 
