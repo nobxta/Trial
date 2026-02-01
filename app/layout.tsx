@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Script from "next/script";
-// Config validation runs automatically on module load (server-side only)
-import '@/lib/config-validation';
+// Env validation runs when API routes or server code first use lib/env (not in layout, so / loads even if env is not yet set on Vercel).
 
 export const metadata: Metadata = {
   title: "MintMove - Crypto Exchange",
