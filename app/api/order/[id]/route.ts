@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOrderByOrderId } from '@/lib/db-orders';
 import { getCurrentStep } from '@/lib/status-mapping';
+import { maybeApplySandboxSimulation } from '@/lib/sandbox-simulation';
 
 /**
  * GET /api/order/[id]
  * 
  * CRITICAL: Returns user-facing status from database ONLY.
  * Database is the source of truth. Provider status is NOT used to override.
+ * For sandbox orders, applies simulated outcome (success/failed/expired/partially_paid)
+ * when the order is fetched, so the page shows the outcome without needing webhook delivery.
  */
 export async function GET(
   request: NextRequest,
@@ -23,7 +26,7 @@ export async function GET(
     }
 
     // Get order from database (source of truth)
-    const order = await getOrderByOrderId(orderId);
+    let order = await getOrderByOrderId(orderId);
 
     if (!order) {
       return NextResponse.json(
@@ -31,6 +34,9 @@ export async function GET(
         { status: 404 }
       );
     }
+
+    // Sandbox: apply simulated outcome (e.g. success) so the order page updates without webhook
+    order = await maybeApplySandboxSimulation(order);
 
     // Return user-facing data ONLY
     // Database status is the source of truth, NOT provider status
@@ -75,10 +81,10 @@ export async function GET(
     };
 
     return NextResponse.json(response);
-  } catch (error: any) {
+  } catch (error) {
     console.error('Get order error:', error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Internal server error' },
+      { success: false, error: 'Something went wrong. Please try again.' },
       { status: 500 }
     );
   }

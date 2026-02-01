@@ -74,6 +74,7 @@ async function getOrders(searchParams: { [key: string]: string | string[] | unde
       to_currency: order.to_currency,
       to_amount: order.to_amount,
       to_network: order.to_network,
+      to_address: order.to_address || null,
       created_at: order.created_at,
       updated_at: order.updated_at,
       locked: order.locked || false,
@@ -94,7 +95,7 @@ export default async function AdminOrdersPage({
 
   return (
     <div className="admin-page-transition">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold" style={{ color: 'var(--admin-text-primary)' }}>
           {isReviewQueue ? 'Manual Review Queue' : 'Orders'}
         </h1>
@@ -115,6 +116,9 @@ export default async function AdminOrdersPage({
           </a>
         )}
       </div>
+      <p className="text-sm mb-6" style={{ color: 'var(--admin-text-muted)', maxWidth: '56rem' }}>
+        <strong style={{ color: 'var(--admin-text-secondary)' }}>Use this page for:</strong> Managing orders. The swap is automated and usually completes in 7–20 minutes. User sees: Waiting for confirmation → Performing exchange → Completed. Use <strong>Confirmed</strong> in the Manual payout column only if you need to mark an order done manually (e.g. automated system didn’t update). Click an Order ID for full details and actions (lock, verify, notes).
+      </p>
       <OrdersTable orders={orders} total={total} isReviewQueue={isReviewQueue} />
     </div>
   );

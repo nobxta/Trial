@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createUser, getUserByEmail } from '@/lib/db';
 import { hashPassword, generateToken } from '@/lib/auth';
-import { sendVerificationEmail } from '@/lib/email';
+import { enqueueVerificationEmail } from '@/lib/email';
 import { cleanupUnverifiedAccounts } from '@/lib/cleanup';
 import crypto from 'crypto';
 
@@ -32,15 +32,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create user
+    // Create user with single-use, expiring verification token (e.g. 24h)
     const hashedPassword = await hashPassword(password);
     const verificationToken = crypto.randomBytes(32).toString('hex');
-    
+    const VERIFICATION_TOKEN_EXPIRY_HOURS = 24;
+    const verificationTokenExpiresAt = new Date(Date.now() + VERIFICATION_TOKEN_EXPIRY_HOURS * 60 * 60 * 1000).toISOString();
+
     const user = await createUser({
       email: email.toLowerCase().trim(),
       password: hashedPassword,
       emailVerified: false,
       verificationToken,
+      verificationTokenExpiresAt,
     });
 
     // Generate token
@@ -53,13 +56,10 @@ export async function POST(request: NextRequest) {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `${protocol}://${host}`;
     const verificationUrl = `${baseUrl}/verify-email?token=${verificationToken}`;
 
-    // Send verification email (instant synchronous send)
-    try {
-      await sendVerificationEmail(user.email, verificationToken, request);
-    } catch (err) {
-      console.error('Failed to send verification email:', err);
-      // Continue with signup even if email fails (user account is created)
-      // Error is logged for monitoring
+    // Queue verification email (non-blocking; cron sends it)
+    const queued = await enqueueVerificationEmail(user.email, verificationToken, request);
+    if (!queued) {
+      console.error('Failed to queue verification email for', user.email);
     }
 
     // Cleanup unverified accounts older than 1 hour (non-blocking)
@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Signup error:', error);
     return NextResponse.json(
-      { success: false, error: 'Internal server error' },
+      { success: false, error: 'Something went wrong. Please try again.' },
       { status: 500 }
     );
   }

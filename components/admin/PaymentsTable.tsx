@@ -2,7 +2,7 @@
 
 import { useState, memo } from 'react';
 import { format } from 'date-fns';
-import { RefreshCw, ExternalLink, Flag } from 'lucide-react';
+import { RefreshCw, ExternalLink, Flag, Filter } from 'lucide-react';
 import Link from 'next/link';
 
 interface Payment {
@@ -25,9 +25,11 @@ interface Payment {
 interface PaymentsTableProps {
   payments: Payment[];
   total: number;
+  /** 'paid' = only payments where user has paid (default). 'all' = every payment including unpaid. */
+  filter?: 'paid' | 'all';
 }
 
-const PaymentsTable = memo(function PaymentsTable({ payments, total }: PaymentsTableProps) {
+const PaymentsTable = memo(function PaymentsTable({ payments, total, filter = 'paid' }: PaymentsTableProps) {
   const [verifying, setVerifying] = useState<string | null>(null);
   const [flagging, setFlagging] = useState<string | null>(null);
 
@@ -121,7 +123,7 @@ const PaymentsTable = memo(function PaymentsTable({ payments, total }: PaymentsT
 
   return (
     <div className="admin-table-container">
-      <div className="admin-table-header">
+      <div className="admin-table-header flex flex-wrap items-center gap-3">
         <h2>Payments</h2>
         <span 
           className="text-sm font-semibold px-3 py-1 rounded-lg"
@@ -132,6 +134,33 @@ const PaymentsTable = memo(function PaymentsTable({ payments, total }: PaymentsT
         >
           Total: {total}
         </span>
+        <div className="flex items-center gap-2 ml-auto" style={{ color: 'var(--admin-text-muted)' }}>
+          <Filter className="w-4 h-4" />
+          <span className="text-sm">Showing:</span>
+          {filter === 'paid' ? (
+            <>
+              <span className="text-sm font-medium" style={{ color: 'var(--admin-text-primary)' }}>Paid only</span>
+              <Link
+                href="/admin/payments?filter=all"
+                className="text-sm px-3 py-1.5 rounded-lg transition-colors hover:opacity-90"
+                style={{ background: 'var(--admin-surface)', color: 'var(--admin-primary-light)' }}
+              >
+                Show all
+              </Link>
+            </>
+          ) : (
+            <>
+              <span className="text-sm font-medium" style={{ color: 'var(--admin-text-primary)' }}>All</span>
+              <Link
+                href="/admin/payments"
+                className="text-sm px-3 py-1.5 rounded-lg transition-colors hover:opacity-90"
+                style={{ background: 'var(--admin-surface)', color: 'var(--admin-primary-light)' }}
+              >
+                Paid only
+              </Link>
+            </>
+          )}
+        </div>
       </div>
       <table className="admin-table">
         <thead>

@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getAdminUser } from '@/lib/admin-auth';
+import {
+  getNowPaymentsLiveApiKey,
+  getNowPaymentsLiveIpnSecret,
+} from '@/lib/env';
 
 export async function GET() {
   try {
@@ -17,14 +21,11 @@ export async function GET() {
       timestamp: new Date().toISOString(),
     };
 
-    // Check NOWPayments API
     try {
-      const apiKey = process.env.NOWPAYMENTS_API_KEY || process.env.NEXT_PUBLIC_NOWPAYMENTS_API_KEY;
+      const apiKey = getNowPaymentsLiveApiKey();
       if (apiKey) {
         const response = await fetch('https://api.nowpayments.io/v1/status', {
-          headers: {
-            'x-api-key': apiKey,
-          },
+          headers: { 'x-api-key': apiKey },
         });
         health.nowpayments = response.ok ? 'healthy' : 'unhealthy';
       } else {
@@ -34,9 +35,7 @@ export async function GET() {
       health.nowpayments = 'unhealthy';
     }
 
-    // Check webhook secret
-    const webhookSecret = process.env.NOWPAYMENTS_IPN_SECRET;
-    health.webhook = webhookSecret ? 'healthy' : 'unhealthy';
+    health.webhook = getNowPaymentsLiveIpnSecret() ? 'healthy' : 'unhealthy';
 
     return NextResponse.json(health);
   } catch (error: any) {

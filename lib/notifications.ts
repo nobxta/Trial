@@ -1,8 +1,8 @@
 import { getUserWithPreferences } from './db';
-import { sendVerificationEmail, sendGenericEmail } from './email';
+import { enqueueEmail } from './email';
 import { getOrderStatusEmailTemplate } from './email-template';
 import { getEmailSetting } from './email-settings';
-import { checkAndMark } from './idempotency';
+import { tryClaimIdempotency } from './idempotency';
 import { NextRequest } from 'next/server';
 
 export type NotificationType = 
@@ -53,21 +53,16 @@ export async function sendNotification(
       }
     }
 
-    // Send email notification using generic email sender
-    // For order status notifications, use the dedicated template
+    // Queue email (cron sends it; do not block webhook/response)
     if (notification.type === 'order_status' && notification.link) {
-      // Extract orderId from link or title (format: "Order ORDER_ID - status")
       const orderIdMatch = notification.title.match(/Order\s+([A-Z0-9-]+)\s+-/i);
       const orderId = orderIdMatch ? orderIdMatch[1] : 'N/A';
       const statusMatch = notification.title.match(/-\s+(.+)$/);
       const status = statusMatch ? statusMatch[1].trim() : 'unknown';
-      
       const { text, html } = getOrderStatusEmailTemplate(orderId, status, notification.link);
       const emailSubject = `Order ${orderId} - Status Update`;
-      
-      return await sendGenericEmail(user.email, emailSubject, html, text, 'TRANSACTIONAL', request);
+      return enqueueEmail({ to: user.email, subject: emailSubject, html, text });
     } else {
-      // Generic notification email (for promotions, affiliate, etc.)
       const emailSubject = notification.title;
       const emailHtml = `
         <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 600px;">
@@ -78,16 +73,7 @@ export async function sendNotification(
         </div>
       `;
       const emailText = `${notification.title}\n\n${notification.message}${notification.link ? `\n\nView details: ${notification.link}` : ''}\n\n— MintMove Team`;
-      
-      // Determine category based on notification type
-      let category: 'MARKETING' | 'ADMIN' | 'SUPPORT' | 'GENERIC' = 'GENERIC';
-      if (notification.type === 'promotion') {
-        category = 'MARKETING';
-      } else if (notification.type === 'affiliate_earnings') {
-        category = 'MARKETING';
-      }
-      
-      return await sendGenericEmail(user.email, emailSubject, emailHtml, emailText, category, request);
+      return enqueueEmail({ to: user.email, subject: emailSubject, html: emailHtml, text: emailText });
     }
   } catch (error) {
     console.error('Failed to send notification:', error);
@@ -97,47 +83,42 @@ export async function sendNotification(
 
 /**
  * Send order status notification
- * Status can be internal status (DONE, EXPIRED, etc.) or lowercase version (done, expired, etc.)
- * 
- * Idempotency: Uses idempotency key to prevent duplicate emails for same order+status combination
+ * Idempotency: Atomic tryClaimIdempotency — only the caller that claims may run side effects.
+ * Guard: Anonymous orders (null userId) skip notification without querying DB.
  */
 export async function notifyOrderStatus(
-  userId: string,
+  userId: string | null,
   orderId: string,
   status: string,
   request?: NextRequest
 ): Promise<boolean> {
-  // Normalize status to uppercase for consistent idempotency keys
-  // This ensures 'DONE' and 'done' map to the same key
+  // Guard: do not query DB with null IDs; skip notification safely for anonymous orders
+  if (userId == null || userId === '') {
+    return true;
+  }
+
   const normalizedStatus = status.toUpperCase();
-  
-  // Construct idempotency key: order:{orderId}:status:{normalizedStatus}
-  // This ensures we only send one email per order status change
   const idempotencyKey = `order:${orderId}:status:${normalizedStatus}`;
   const scope = 'order_status_email';
 
-  // Check if this notification has already been sent
-  const isFirstExecution = await checkAndMark(scope, idempotencyKey);
-  
-  if (!isFirstExecution) {
+  // Atomic claim: only one concurrent caller gets true; others exit immediately
+  const claimed = await tryClaimIdempotency(scope, idempotencyKey);
+  if (!claimed) {
     console.log(`⏭️  Order status email skipped (idempotency): ${orderId} - ${normalizedStatus}`);
-    return true; // Return true to indicate "handled" (even though skipped)
+    return true;
   }
 
-  console.log(`📧 Sending order status email (first time): ${orderId} - ${normalizedStatus}`);
+  console.log(`📧 Sending order status email (claimed): ${orderId} - ${normalizedStatus}`);
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
   const orderLink = `${baseUrl}/order/${orderId}`;
 
-  // Send email notification immediately via SMTP
-  // Note: Idempotency is marked BEFORE sending to prevent duplicate emails
-  // If sending fails, idempotency is already marked (at-most-once semantics)
   return sendNotification(
     userId,
     {
       type: 'order_status',
-      title: `Order ${orderId} - ${status}`, // Use original status for display
-      message: `Your order status has been updated.`, // Message is in template
+      title: `Order ${orderId} - ${status}`,
+      message: `Your order status has been updated.`,
       link: orderLink,
     },
     request

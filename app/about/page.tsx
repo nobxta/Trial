@@ -3,7 +3,7 @@
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { useEffect, useState, useMemo } from "react";
-import { ThumbsUp, Shield, Clock, ArrowUp } from "lucide-react";
+import { ThumbsUp, Shield, Clock, Search, X, ChevronDown } from "lucide-react";
 import CryptoIcon from "@/components/CryptoIcon";
 import { getEnabledCryptos, SupportedCrypto } from "@/lib/supported-cryptos";
 import BlurTextAnimation from "@/components/ui/blur-text-animation";
@@ -39,32 +39,61 @@ const networkPriority: Record<string, number> = {
   'BSC': 3,
 };
 
-// Get unique cryptocurrencies by symbol (preferring main networks)
-function getUniqueCryptos(): SupportedCrypto[] {
-  const allCryptos = getEnabledCryptos();
-  const cryptoMap = new Map<string, SupportedCrypto>();
+// Popular/Featured cryptocurrencies (top 6)
+const POPULAR_SYMBOLS = ['BTC', 'ETH', 'USDT', 'USDC', 'SOL', 'BNB'];
 
+// Group cryptocurrencies by symbol
+interface GroupedCrypto {
+  symbol: string;
+  name: string;
+  networks: SupportedCrypto[];
+  primaryNetwork: SupportedCrypto; // The main/preferred network
+}
+
+function groupCryptosBySymbol(): GroupedCrypto[] {
+  const allCryptos = getEnabledCryptos();
+  const grouped = new Map<string, SupportedCrypto[]>();
+
+  // Group by symbol
   allCryptos.forEach(crypto => {
     const symbol = crypto.symbol.toUpperCase();
-    const existing = cryptoMap.get(symbol);
-    
-    if (!existing) {
-      cryptoMap.set(symbol, crypto);
-    } else {
-      // Prefer main network versions
-      const existingPriority = networkPriority[existing.network] || 999;
-      const currentPriority = networkPriority[crypto.network] || 999;
-      
-      if (currentPriority < existingPriority) {
-        cryptoMap.set(symbol, crypto);
-      }
+    if (!grouped.has(symbol)) {
+      grouped.set(symbol, []);
     }
+    grouped.get(symbol)!.push(crypto);
   });
 
-  // Sort by symbol for consistent display
-  return Array.from(cryptoMap.values()).sort((a, b) => 
-    a.symbol.localeCompare(b.symbol)
-  );
+  // Convert to array and select primary network
+  const result: GroupedCrypto[] = [];
+  grouped.forEach((networks, symbol) => {
+    // Sort networks by priority
+    networks.sort((a, b) => {
+      const aPriority = networkPriority[a.network] || 999;
+      const bPriority = networkPriority[b.network] || 999;
+      return aPriority - bPriority;
+    });
+
+    result.push({
+      symbol,
+      name: networks[0].name,
+      networks,
+      primaryNetwork: networks[0],
+    });
+  });
+
+  // Sort: Popular first, then alphabetically
+  return result.sort((a, b) => {
+    const aPopular = POPULAR_SYMBOLS.indexOf(a.symbol);
+    const bPopular = POPULAR_SYMBOLS.indexOf(b.symbol);
+    
+    if (aPopular !== -1 && bPopular !== -1) {
+      return aPopular - bPopular;
+    }
+    if (aPopular !== -1) return -1;
+    if (bPopular !== -1) return 1;
+    
+    return a.symbol.localeCompare(b.symbol);
+  });
 }
 
 function StaticStars() {
@@ -105,7 +134,87 @@ function StaticStars() {
 }
 
 export default function AboutPage() {
-  const supportedCurrencies = useMemo(() => getUniqueCryptos(), []);
+  const groupedCryptos = useMemo(() => groupCryptosBySymbol(), []);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [selectedNetwork, setSelectedNetwork] = useState<string>("all");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+
+  // Category definitions (static)
+  const categoryDefinitions = useMemo(() => {
+    const layer1 = ["BTC", "ETH", "SOL", "ADA", "DOT", "AVAX", "ATOM", "NEAR", "APT", "SUI", "TON"];
+    const defi = ["AAVE", "UNI", "LINK", "1INCH"];
+    const stablecoins = ["USDT", "USDC", "TUSD", "PYUSD"];
+    const memes = ["DOGE", "SHIB", "PEPE", "FLOKI", "BABYDOGE"];
+    
+    return [
+      { id: "all", label: "All", symbols: null },
+      { id: "layer1", label: "Layer 1", symbols: layer1 },
+      { id: "defi", label: "DeFi", symbols: defi },
+      { id: "stablecoins", label: "Stablecoins", symbols: stablecoins },
+      { id: "memes", label: "Memes", symbols: memes },
+    ];
+  }, []);
+
+  // Get unique networks for filter
+  const allNetworks = useMemo(() => {
+    const networks = new Set<string>();
+    groupedCryptos.forEach(group => {
+      group.networks.forEach(network => {
+        networks.add(network.network);
+      });
+    });
+    return Array.from(networks).sort();
+  }, [groupedCryptos]);
+
+  // Filter and search
+  const filteredCryptos = useMemo(() => {
+    return groupedCryptos.filter(group => {
+      // Search filter
+      const matchesSearch = 
+        group.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        group.name.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      if (!matchesSearch) return false;
+
+      // Network filter
+      if (selectedNetwork !== "all") {
+        const hasNetwork = group.networks.some(network => network.network === selectedNetwork);
+        if (!hasNetwork) return false;
+      }
+
+      // Category filter
+      if (selectedCategory !== "all") {
+        const category = categoryDefinitions.find(c => c.id === selectedCategory);
+        if (category && category.symbols) {
+          if (!category.symbols.includes(group.symbol)) return false;
+        }
+      }
+      
+      return true;
+    });
+  }, [groupedCryptos, searchQuery, selectedNetwork, selectedCategory, categoryDefinitions]);
+
+  const popularCryptos = useMemo(() => {
+    const set = new Set(POPULAR_SYMBOLS);
+    return filteredCryptos.filter((c) => set.has(c.symbol));
+  }, [filteredCryptos]);
+
+  const otherCryptos = useMemo(() => {
+    const set = new Set(POPULAR_SYMBOLS);
+    return filteredCryptos.filter((c) => !set.has(c.symbol));
+  }, [filteredCryptos]);
+
+  // Category definitions with dynamic counts
+  const categories = useMemo(() => {
+    return categoryDefinitions.map(cat => ({
+      ...cat,
+      count: cat.symbols 
+        ? filteredCryptos.filter(c => cat.symbols!.includes(c.symbol)).length
+        : filteredCryptos.length
+    }));
+  }, [categoryDefinitions, filteredCryptos]);
+
 
   return (
     <div className="min-h-screen bg-[#050505] text-[#d4d4d4] selection:bg-blue-500/30 selection:text-blue-200">
@@ -337,56 +446,217 @@ export default function AboutPage() {
 
         {/* Supported Currencies Section */}
         <section className="container mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-20 lg:py-24">
-          <div className="mb-12 sm:mb-16">
-            <h2 className="text-4xl sm:text-5xl md:text-6xl font-bold text-white mb-4 text-center sm:text-left">
-              Supported currencies
-            </h2>
-            <p className="text-neutral-400 text-sm sm:text-base max-w-2xl">
-              We support a wide range of cryptocurrencies and networks. Choose from popular coins and tokens across multiple blockchains.
-            </p>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 md:gap-5">
-            {supportedCurrencies.map((currency, index) => (
-              <div
-                key={currency.id}
-                className="group relative bg-gradient-to-br from-white/[0.03] to-white/[0.01] rounded-xl p-4 sm:p-5 border border-white/5 hover:border-white/20 hover:from-white/[0.05] hover:to-white/[0.02] transition-all duration-300 cursor-default overflow-hidden"
-                style={{
-                  animationDelay: `${index * 30}ms`,
-                }}
-              >
-                {/* Hover glow effect */}
-                <div className="absolute inset-0 bg-gradient-to-br from-blue-500/0 to-purple-500/0 group-hover:from-blue-500/10 group-hover:to-purple-500/5 transition-all duration-500 rounded-xl opacity-0 group-hover:opacity-100" />
-                
-                {/* Content */}
-                <div className="relative flex flex-col items-center justify-center space-y-3">
-                  {/* Icon container with glow effect */}
-                  <div className="relative w-14 h-14 sm:w-16 sm:h-16 flex items-center justify-center">
-                    <div className="absolute inset-0 bg-blue-500/20 rounded-full blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                    <CryptoIcon 
-                      symbol={currency.symbol} 
-                      imageUrl={currency.imageUrl}
-                      className="w-full h-full relative z-10 group-hover:scale-110 transition-transform duration-300" 
-                    />
+          <div className="mb-12">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-4xl sm:text-5xl md:text-6xl font-bold text-white mb-4 text-center sm:text-left">
+                  Supported currencies
+                </h2>
+                <p className="text-neutral-400 text-sm sm:text-base max-w-2xl mb-8">
+                  We support a wide range of cryptocurrencies and networks. Choose from popular coins and tokens across multiple blockchains.
+                </p>
+              </div>
+
+              {/* Compact search icon (top-right) */}
+              <div className="relative mt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsSearchOpen((v) => !v)}
+                  className="h-10 w-10 rounded-xl bg-white/5 border border-white/10 backdrop-blur-xl flex items-center justify-center text-neutral-300 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all duration-200"
+                  aria-label="Search"
+                >
+                  <Search className="w-5 h-5" />
+                </button>
+
+                {isSearchOpen && (
+                  <div className="absolute right-0 mt-3 w-[260px] sm:w-[320px] rounded-2xl border border-white/10 bg-[#0b0b0b]/90 backdrop-blur-xl shadow-2xl p-3 z-20">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+                      <input
+                        autoFocus
+                        type="text"
+                        placeholder="Search the coin"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-10 pr-10 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/30 transition-all"
+                      />
+                      {searchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setSearchQuery("")}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-lg flex items-center justify-center text-neutral-400 hover:text-white hover:bg-white/10 transition-all"
+                          aria-label="Clear search"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between mt-2">
+                      <span className="text-xs text-neutral-500">
+                        {filteredCryptos.length} result{filteredCryptos.length === 1 ? "" : "s"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setIsSearchOpen(false)}
+                        className="text-xs text-neutral-400 hover:text-white transition-colors"
+                      >
+                        Close
+                      </button>
+                    </div>
                   </div>
-                  
-                  {/* Name and network */}
-                  <div className="text-center w-full">
-                    <div className="text-xs sm:text-sm font-semibold text-white mb-0.5 group-hover:text-blue-300 transition-colors duration-200">
-                      {currency.name}
-                    </div>
-                    <div className="text-[10px] sm:text-xs text-neutral-500 font-medium">
-                      {currency.symbol}
-                    </div>
-                    {currency.networkCode && currency.networkCode.toUpperCase() !== currency.symbol.toUpperCase() && (
-                      <div className="mt-1 inline-flex items-center px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[10px] text-neutral-400">
-                        {currency.networkCode}
-                      </div>
-                    )}
+                )}
+              </div>
+            </div>
+
+            {/* Glassmorphism Toolbar */}
+            <div className="glass-panel rounded-2xl p-6 mb-8 border border-white/10 backdrop-blur-xl bg-gradient-to-br from-white/[0.08] to-white/[0.02] shadow-2xl">
+              <div className="flex flex-col lg:flex-row lg:items-center gap-4">
+                {/* Filter Chips */}
+                <div className="flex flex-wrap items-center gap-2 flex-1">
+                  {categories.map((category) => {
+                    const isActive = selectedCategory === category.id;
+                    return (
+                      <button
+                        key={category.id}
+                        onClick={() => setSelectedCategory(category.id)}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                          isActive
+                            ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30 shadow-lg shadow-blue-500/10'
+                            : 'bg-white/5 text-neutral-400 border border-white/10 hover:bg-white/10 hover:text-neutral-300 hover:border-white/20'
+                        }`}
+                      >
+                        {category.label}
+                        {category.count !== undefined && (
+                          <span className="ml-2 text-xs opacity-70">({category.count})</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Network dropdown */}
+                <div className="w-full lg:w-64">
+                  <div className="relative">
+                    <select
+                      value={selectedNetwork}
+                      onChange={(e) => setSelectedNetwork(e.target.value)}
+                      className="w-full appearance-none pl-4 pr-10 py-3 rounded-xl bg-white/5 border border-white/10 text-neutral-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/30 transition-all"
+                    >
+                      <option value="all">All networks</option>
+                      {allNetworks.map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
                   </div>
                 </div>
               </div>
-            ))}
+            </div>
+
+            {/* Results Count */}
+            {filteredCryptos.length > 0 && (
+              <p className="text-sm text-neutral-400 mb-6">
+                Showing {filteredCryptos.length} {filteredCryptos.length === 1 ? 'currency' : 'currencies'}
+                {searchQuery && ` matching "${searchQuery}"`}
+              </p>
+            )}
           </div>
+
+          {/* Card Grid Layout (7 per row on xl) */}
+          <div className="space-y-10">
+            {/* Popular */}
+            {popularCryptos.length > 0 && (
+              <div>
+                <div className="flex items-end justify-between mb-5">
+                  <div>
+                    <h3 className="text-2xl sm:text-3xl font-bold text-white">Popular coins</h3>
+                    <p className="text-sm text-neutral-500 mt-1">Quick picks.</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-3 sm:gap-4">
+                  {popularCryptos.map((group) => {
+                    const displayNetwork = group.primaryNetwork;
+
+                    return (
+                      <div
+                        key={`popular-${group.symbol}`}
+                        className="group relative rounded-xl border border-white/10 bg-white/[0.02] backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.35)] transition-[transform,background-color,border-color,box-shadow] duration-300 ease-out will-change-transform hover:-translate-y-0.5 hover:bg-white/[0.04] hover:border-blue-500/30 hover:shadow-[0_22px_70px_rgba(0,0,0,0.45)]"
+                      >
+                        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
+                          <div className="absolute -inset-10 bg-gradient-to-r from-blue-500/10 via-purple-500/5 to-blue-500/10 blur-2xl" />
+                        </div>
+
+                        <div className="relative p-3.5 h-[96px] flex flex-col items-center justify-center">
+                          <CryptoIcon
+                            symbol={displayNetwork.symbol}
+                            imageUrl={displayNetwork.imageUrl}
+                            className="w-9 h-9 transition-transform duration-300 ease-out group-hover:scale-[1.06]"
+                          />
+                          <div className="mt-2 text-[11px] font-medium text-neutral-200 text-center leading-tight truncate w-full px-1">
+                            {group.name}{" "}
+                            <span className="text-neutral-500">({group.symbol})</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* All assets */}
+            <div>
+              <div className="flex items-end justify-between mb-5">
+                <div>
+                  <h3 className="text-2xl sm:text-3xl font-bold text-white">All assets</h3>
+                  <p className="text-sm text-neutral-500 mt-1">Browse everything we support.</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-3 sm:gap-4">
+                {otherCryptos.map((group) => {
+                  const displayNetwork = group.primaryNetwork;
+
+                  return (
+                    <div
+                      key={`all-${group.symbol}`}
+                      className="group relative rounded-xl border border-white/10 bg-white/[0.02] backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.35)] transition-[transform,background-color,border-color,box-shadow] duration-300 ease-out will-change-transform hover:-translate-y-0.5 hover:bg-white/[0.04] hover:border-blue-500/30 hover:shadow-[0_22px_70px_rgba(0,0,0,0.45)]"
+                    >
+                      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
+                        <div className="absolute -inset-10 bg-gradient-to-r from-blue-500/10 via-purple-500/5 to-blue-500/10 blur-2xl" />
+                      </div>
+
+                      <div className="relative p-3.5 h-[96px] flex flex-col items-center justify-center">
+                        <CryptoIcon
+                          symbol={displayNetwork.symbol}
+                          imageUrl={displayNetwork.imageUrl}
+                          className="w-9 h-9 transition-transform duration-300 ease-out group-hover:scale-[1.06]"
+                        />
+                        <div className="mt-2 text-[11px] font-medium text-neutral-200 text-center leading-tight truncate w-full px-1">
+                          {group.name}{" "}
+                          <span className="text-neutral-500">({group.symbol})</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+
+          {/* No Results */}
+          {filteredCryptos.length === 0 && (
+            <div className="text-center py-12">
+              <p className="text-neutral-400 text-lg mb-2">No currencies found</p>
+              <p className="text-neutral-500 text-sm">
+                Try adjusting your search or filter criteria
+              </p>
+            </div>
+          )}
         </section>
       </main>
 

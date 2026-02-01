@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserByEmail, updateUser } from '@/lib/db';
-import { sendVerificationEmail } from '@/lib/email';
+import { enqueueVerificationEmail } from '@/lib/email';
 import crypto from 'crypto';
 
 export async function POST(request: NextRequest) {
@@ -32,16 +32,21 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Generate new verification token
+    // Generate new single-use, expiring verification token (same window as signup)
     const verificationToken = crypto.randomBytes(32).toString('hex');
-    
-    // Update user with new token
+    const VERIFICATION_TOKEN_EXPIRY_HOURS = 24;
+    const verificationTokenExpiresAt = new Date(Date.now() + VERIFICATION_TOKEN_EXPIRY_HOURS * 60 * 60 * 1000).toISOString();
+
     await updateUser(user.id, {
       verificationToken,
+      verificationTokenExpiresAt,
     });
 
-    // Send verification email
-    await sendVerificationEmail(user.email, verificationToken, request);
+    // Queue verification email (cron sends it; do not block response)
+    const queued = await enqueueVerificationEmail(user.email, verificationToken, request);
+    if (!queued) {
+      console.error('Failed to queue verification email for', user.email);
+    }
 
     return NextResponse.json({
       success: true,
@@ -50,7 +55,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Resend verification error:', error);
     return NextResponse.json(
-      { success: false, error: 'Internal server error' },
+      { success: false, error: 'Something went wrong. Please try again.' },
       { status: 500 }
     );
   }

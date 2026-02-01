@@ -1,11 +1,16 @@
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import crypto from 'crypto';
+import { getSupabaseUrl, getSupabaseServiceRoleKey } from './env';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabaseUrl = getSupabaseUrl();
+const supabaseKey = getSupabaseServiceRoleKey();
+// Server-only: env validation ensures url/key are set when app runs.
+const supabase =
+  supabaseUrl && supabaseKey
+    ? createClient(supabaseUrl, supabaseKey)
+    : null;
+const supabaseClient = supabase!;
 
 export interface ChatMessage {
   id: string;
@@ -49,7 +54,7 @@ export async function createLiveChat(userEmail?: string, userAgent?: string, ipH
   const chatId = crypto.randomUUID();
 
   // Create dispute with issue as description
-  const { data: dispute, error: disputeError } = await supabase
+  const { data: dispute, error: disputeError } = await supabaseClient
     .from('disputes')
     .insert({
       type: 'live_chat',
@@ -68,7 +73,7 @@ export async function createLiveChat(userEmail?: string, userAgent?: string, ipH
 
   // Create session if IP hash provided
   if (ipHash) {
-    await supabase
+    await supabaseClient
       .from('dispute_sessions')
       .insert({
         chat_id: chatId,
@@ -91,7 +96,7 @@ export async function createLiveChat(userEmail?: string, userAgent?: string, ipH
  * @param includeDeleted - If true, include deleted chats (admin only). Default false for user access.
  */
 export async function getChatByChatId(chatId: string, includeDeleted: boolean = false): Promise<DisputeChat | null> {
-  let query = supabase
+  let query = supabaseClient
     .from('disputes')
     .select('*')
     .eq('chat_id', chatId);
@@ -111,7 +116,7 @@ export async function getChatByChatId(chatId: string, includeDeleted: boolean = 
  * Get chat messages
  */
 export async function getChatMessages(disputeId: string, limit = 100): Promise<ChatMessage[]> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseClient
     .from('dispute_messages')
     .select('*')
     .eq('dispute_id', disputeId)
@@ -145,7 +150,7 @@ export async function addChatMessage(
     throw new Error('Invalid message');
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await supabaseClient
     .from('dispute_messages')
     .insert({
       dispute_id: disputeId,
@@ -212,7 +217,7 @@ export async function updateDisputeStatus(
 
   console.log(`[updateDisputeStatus] Updating dispute ${disputeId} to status: "${normalizedStatus}"`);
 
-  const { error } = await supabase
+  const { error } = await supabaseClient
     .from('disputes')
     .update({ status: normalizedStatus })
     .eq('id', disputeId);
@@ -255,7 +260,7 @@ export async function updateDisputeStatus(
  * Mark messages as read
  */
 export async function markMessagesAsRead(disputeId: string, reader: 'user' | 'admin'): Promise<void> {
-  const { error } = await supabase
+  const { error } = await supabaseClient
     .from('dispute_messages')
     .update({ read_at: new Date().toISOString() })
     .eq('dispute_id', disputeId)
@@ -271,7 +276,7 @@ export async function markMessagesAsRead(disputeId: string, reader: 'user' | 'ad
  * Get unread message count
  */
 export async function getUnreadCount(disputeId: string, reader: 'user' | 'admin'): Promise<number> {
-  const { count, error } = await supabase
+  const { count, error } = await supabaseClient
     .from('dispute_messages')
     .select('*', { count: 'exact', head: true })
     .eq('dispute_id', disputeId)
@@ -286,7 +291,7 @@ export async function getUnreadCount(disputeId: string, reader: 'user' | 'admin'
  * Update session last active
  */
 export async function updateSessionLastActive(chatId: string, ipHash: string): Promise<void> {
-  await supabase
+  await supabaseClient
     .from('dispute_sessions')
     .update({ last_active_at: new Date().toISOString() })
     .eq('chat_id', chatId)
@@ -297,7 +302,7 @@ export async function updateSessionLastActive(chatId: string, ipHash: string): P
  * Validate chat access (soft check via IP hash)
  */
 export async function validateChatAccess(chatId: string, ipHash: string): Promise<boolean> {
-  const { data } = await supabase
+  const { data } = await supabaseClient
     .from('dispute_sessions')
     .select('id')
     .eq('chat_id', chatId)
@@ -311,7 +316,7 @@ export async function validateChatAccess(chatId: string, ipHash: string): Promis
  * Get all disputes with chat info (for admin)
  */
 export async function getAllDisputesWithChatInfo(): Promise<(DisputeChat & { unread_count: number })[]> {
-  const { data: disputes, error } = await supabase
+  const { data: disputes, error } = await supabaseClient
     .from('disputes')
     .select('*')
     .order('last_message_at', { ascending: false, nullsFirst: false });
@@ -333,7 +338,7 @@ export async function getAllDisputesWithChatInfo(): Promise<(DisputeChat & { unr
  * Get dispute by ID (for admin)
  */
 export async function getDisputeById(disputeId: string): Promise<DisputeChat | null> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseClient
     .from('disputes')
     .select('*')
     .eq('id', disputeId)

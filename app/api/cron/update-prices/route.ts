@@ -33,10 +33,13 @@ async function fetchPricesFromCoinGecko(coinIds: string[]): Promise<Record<strin
 
 export async function GET(request: NextRequest) {
   try {
-    // Verify this is called by Vercel Cron (security check)
     const authHeader = request.headers.get('authorization');
-    const cronSecret = process.env.CRON_SECRET;
-    
+    const cronSecret = process.env.CRON_SECRET?.trim();
+    const isProduction = process.env.NODE_ENV === 'production';
+    if (isProduction && !cronSecret) {
+      console.error('[Cron] CRON_SECRET missing in production');
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
     if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },

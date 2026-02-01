@@ -1,27 +1,8 @@
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { cookies } from 'next/headers';
+import { getJwtSecret } from './env';
 
-// CRITICAL: JWT_SECRET must be set in production - no default allowed
-function getJwtSecret(): string {
-  const secret = process.env.JWT_SECRET;
-  
-  if (process.env.NODE_ENV === 'production') {
-    if (!secret || secret === 'your-secret-key-change-in-production') {
-      throw new Error('JWT_SECRET must be set to a secure random string in production. Do not use the default value.');
-    }
-    return secret;
-  }
-  
-  // Development: allow default but warn
-  if (!secret || secret === 'your-secret-key-change-in-production') {
-    console.warn('⚠️  JWT_SECRET is using default value. Change it before deploying to production.');
-  }
-  
-  return secret || 'your-secret-key-change-in-production';
-}
-
-const JWT_SECRET = getJwtSecret();
 const JWT_EXPIRES_IN = '7d';
 
 export interface TokenPayload {
@@ -38,12 +19,14 @@ export async function verifyPassword(password: string, hashedPassword: string): 
 }
 
 export function generateToken(payload: TokenPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+  const secret = getJwtSecret();
+  return jwt.sign(payload, secret, { expiresIn: JWT_EXPIRES_IN });
 }
 
 export function verifyToken(token: string): TokenPayload | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as TokenPayload;
+    const secret = getJwtSecret();
+    return jwt.verify(token, secret) as TokenPayload;
   } catch {
     return null;
   }

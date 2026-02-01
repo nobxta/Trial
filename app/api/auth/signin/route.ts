@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Signin error:', error);
     return NextResponse.json(
-      { success: false, error: 'Internal server error' },
+      { success: false, error: 'Something went wrong. Please try again.' },
       { status: 500 }
     );
   }

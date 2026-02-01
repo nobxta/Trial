@@ -1,17 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { 
-  getOrderByPaymentId, 
-  updateOrderStatus,
-  checkWebhookIdempotency,
-  recordWebhookIdempotency
+import {
+  getOrderByPaymentId,
+  processWebhookStatusUpdateAtomic,
+  type Order,
 } from '@/lib/db-orders';
 import { notifyOrderStatus } from '@/lib/notifications';
 import { webhookLogger } from '@/lib/webhook-logger';
-import { getPayoutMode } from '@/lib/payout-mode';
-import { mapProviderStatusToInternal, type InternalStatus } from '@/lib/status-mapping';
+import { mapProviderStatusToInternal, getUserFacingStatus, type InternalStatus } from '@/lib/status-mapping';
 import { recordOrderCompletion } from '@/lib/ledger';
 import { getNowPaymentsConfig } from '@/lib/nowpayments-config';
+import {
+  getNowPaymentsLiveIpnSecret,
+  getNowPaymentsSandboxIpnSecret,
+  isProductionEnv,
+} from '@/lib/env';
+import { supabaseAdmin } from '@/lib/supabase';
 
 /**
  * Verify NOWPayments webhook signature
@@ -142,19 +146,19 @@ export async function POST(request: NextRequest) {
     }
     console.log('🔵 Determined payment_mode:', paymentMode);
     
-    // Get IPN secret based on payment mode
+    // Get IPN secret from centralized env (no direct process.env for secrets)
     let ipnSecret: string | undefined;
-    
     if (paymentMode === 'sandbox') {
-      ipnSecret = process.env.NOWPAYMENTS_IPN_SECRET_SANDBOX;
+      const s = getNowPaymentsSandboxIpnSecret();
+      ipnSecret = s || undefined;
       console.log('🔵 Using SANDBOX IPN secret (configured:', !!ipnSecret, ')');
     } else {
-      // Live mode (default)
-      ipnSecret = process.env.NOWPAYMENTS_IPN_SECRET_LIVE || process.env.NOWPAYMENTS_IPN_SECRET;
-      console.log('🔵 Using LIVE IPN secret (LIVE configured:', !!process.env.NOWPAYMENTS_IPN_SECRET_LIVE, ', LEGACY configured:', !!process.env.NOWPAYMENTS_IPN_SECRET, ')');
+      const s = getNowPaymentsLiveIpnSecret();
+      ipnSecret = s || undefined;
+      console.log('🔵 Using LIVE IPN secret (configured:', !!ipnSecret, ')');
     }
     console.log('🔵 IPN secret length:', ipnSecret?.length || 0);
-    
+
     // Get webhook signature from headers
     // NOWPayments IPN uses x-nowpayments-sig header for signature (HMAC SHA-512)
     const signature = request.headers.get('x-nowpayments-sig') || 
@@ -217,7 +221,7 @@ export async function POST(request: NextRequest) {
       });
     } else {
       // In development, allow webhooks without signature verification (with warning)
-      if (process.env.NODE_ENV === 'production') {
+      if (isProductionEnv()) {
         webhookLogger.error('IPN secret not configured for payment mode', undefined, {
           event: 'config_error',
           payment_mode: paymentMode,
@@ -269,129 +273,95 @@ export async function POST(request: NextRequest) {
     });
     
     if (!order) {
-      console.error('🔴 Order not found - returning 200 to prevent retries');
+      // Persist orphan so recovery path and alerting can run; do not silently swallow
+      if (supabaseAdmin) {
+        const { error: orphanError } = await supabaseAdmin.from('webhook_orphans').upsert(
+          {
+            payment_id: paymentId,
+            payload_snapshot: { payment_status: paymentStatus, order_id: orderId ?? null, at: new Date().toISOString() },
+            created_at: new Date().toISOString(),
+          },
+          { onConflict: 'payment_id' }
+        );
+        if (orphanError) console.error('🔴 Failed to persist webhook orphan:', orphanError);
+      }
+      console.error('🔴 Order not found - persisting orphan and returning 503 so provider retries');
       webhookLogger.warn('Order not found for payment_id', {
         event: 'order_not_found',
         payment_id: paymentId,
       });
-      // Return 200 to prevent NOWPayments from retrying
-      // Order might not exist in our DB yet, or payment_id mismatch
+      // Return 503 so transient "order not found" (e.g. replica lag) does not permanently drop webhook events
       return NextResponse.json(
-        { received: true, message: 'Order not found' },
-        { status: 200 }
+        { error: 'Order not found; retry later' },
+        { status: 503 }
       );
     }
     
     console.log('✅ Order found, proceeding with status update');
 
-    // PRIORITY 1: Check idempotency - prevent duplicate webhook processing
-    console.log('🔵 Checking idempotency...');
-    const alreadyProcessed = await checkWebhookIdempotency(paymentId, paymentStatus);
-    console.log('🔵 Idempotency check result:', alreadyProcessed ? 'ALREADY PROCESSED' : 'NEW');
-    
-    if (alreadyProcessed) {
-      console.log('✅ Webhook already processed - returning 200');
-      webhookLogger.info('Webhook already processed (idempotent)', {
-        event: 'webhook_idempotent',
-        payment_id: paymentId,
-        payment_status: paymentStatus,
-        order_id: order.orderId,
-      });
-      // Return success - webhook was already processed, no action needed
-      return NextResponse.json(
-        { 
-          received: true,
-          order_id: order.orderId,
-          status: order.status,
-          message: 'Webhook already processed (idempotent)' 
-        },
-        { status: 200 }
-      );
-    }
-
     // Map NOWPayments status to internal order status using new mapping function
+    // When we receive exchange notification (finished/success), show order as Completed immediately.
     console.log('🔵 Mapping provider status to internal status...');
     console.log('🔵 Provider status:', paymentStatus);
     let mappedStatus = mapProviderStatusToInternal(paymentStatus) as InternalStatus;
     console.log('🔵 Mapped internal status:', mappedStatus);
 
-    // CRITICAL: In manual payout mode, prevent automatic DONE status
-    // Orders must stop at PAYMENT_CONFIRMED and wait for admin manual completion
-    console.log('🔵 Checking payout mode...');
-    const payoutMode = await getPayoutMode();
-    console.log('🔵 Payout mode:', payoutMode);
-    
-    if (payoutMode === 'manual' && (mappedStatus === 'DONE' || paymentStatus?.toLowerCase() === 'finished' || paymentStatus?.toLowerCase() === 'success')) {
-      // In manual mode, NOWPayments may have sent payout, but we don't auto-complete
-      // Stop at PAYMENT_CONFIRMED and move to MANUAL_REVIEW for admin action
-      const currentInternalStatus = order.internalStatus || order.status;
-      console.log('🔵 Manual payout mode - intercepting DONE status');
-      console.log('🔵 Current internal status:', currentInternalStatus);
-      
-      if (currentInternalStatus === 'PROCESSING_BY_PROVIDER') {
-        mappedStatus = 'MANUAL_REVIEW'; // Move to manual review queue
-      } else {
-        mappedStatus = 'PAYMENT_CONFIRMED'; // Stop at payment confirmed
-      }
-      
-      console.log('🔵 Mapped status changed to:', mappedStatus);
-      webhookLogger.info('Manual payout mode: preventing automatic DONE status', {
-        event: 'manual_payout_mode_intercept',
-        payment_id: paymentId,
-        order_id: order.orderId,
-        payment_status: paymentStatus,
-        would_have_been: 'DONE',
-        set_to: mappedStatus,
-      });
-    }
-
-    // Update order status in database
-    // Status transition protection is handled in updateOrderStatus
-    console.log('🔵 Calling updateOrderStatus...');
-    console.log('🔵 Order ID:', order.orderId);
-    console.log('🔵 Mapped status:', mappedStatus);
-    console.log('🔵 Provider status to save:', paymentStatus);
-    
-    const updatedOrder = await updateOrderStatus(
-      order.orderId,
-      mappedStatus,
-      {
+    // Atomic DB transaction: idempotency + order update + history. All succeed or all roll back.
+    // Prevents double-processing even if the database briefly fails after a partial write.
+    let updatedOrder: Order;
+    try {
+      const result = await processWebhookStatusUpdateAtomic({
+        paymentId,
+        paymentStatus,
+        orderId: order.orderId,
+        internalStatus: mappedStatus,
+        userStatus: getUserFacingStatus(mappedStatus),
+        providerStatus: paymentStatus,
+        statusSource: 'webhook',
         fromAddress: payload.pay_address || undefined,
         payinHash: payload.payin_hash || undefined,
         payoutHash: payload.payout_hash || undefined,
-        providerStatus: paymentStatus, // Store raw provider status
-      },
-      {
-        source: 'webhook', // Track source for history
-        paymentStatus: paymentStatus, // Pass original payment_status for history
-      }
-    );
+      });
 
-    console.log('🔵 updateOrderStatus returned:', updatedOrder ? 'SUCCESS' : 'NULL');
-    
-    if (!updatedOrder) {
-      console.error('🔴 updateOrderStatus returned NULL - database update failed');
-      webhookLogger.error('Failed to update order status', undefined, {
-        event: 'status_update_failed',
+      if (result.alreadyProcessed) {
+        console.log('✅ Webhook already processed (idempotent) - returning 200');
+        webhookLogger.info('Webhook already processed (idempotent)', {
+          event: 'webhook_idempotent',
+          payment_id: paymentId,
+          payment_status: paymentStatus,
+          order_id: order.orderId,
+        });
+        return NextResponse.json(
+          {
+            received: true,
+            order_id: order.orderId,
+            status: order.status,
+            message: 'Webhook already processed (idempotent)',
+          },
+          { status: 200 }
+        );
+      }
+
+      updatedOrder = result.order;
+    } catch (txError: any) {
+      // Transaction failed: idempotency + update + history all rolled back. No partial state.
+      console.error('🔴 Webhook atomic transaction failed:', txError);
+      webhookLogger.error('Webhook atomic processing failed', txError, {
+        event: 'webhook_transaction_failed',
         payment_id: paymentId,
         order_id: order.orderId,
         payment_status: paymentStatus,
-        mapped_status: mappedStatus,
       });
       return NextResponse.json(
-        { error: 'Failed to update order' },
+        { error: 'Failed to process webhook; please retry.' },
         { status: 500 }
       );
     }
-    
-    console.log('✅ Order updated successfully');
+
+    console.log('✅ Order updated successfully (atomic)');
     console.log('🔵 Updated order internal_status:', updatedOrder.internalStatus);
     console.log('🔵 Updated order provider_status:', updatedOrder.providerStatus);
     console.log('🔵 Updated order user_status:', updatedOrder.userStatus);
-
-    // PRIORITY 1: Record idempotency AFTER successful processing
-    // This ensures we only mark as processed if the update succeeded
-    await recordWebhookIdempotency(paymentId, paymentStatus, order.orderId);
 
     // Log successful status update
     const oldStatus = order.internalStatus || order.status;
@@ -500,7 +470,7 @@ export async function POST(request: NextRequest) {
       event: 'webhook_error',
     });
     return NextResponse.json(
-      { error: 'Internal server error', message: error.message },
+      { error: 'Something went wrong. Please try again.' },
       { status: 500 }
     );
   }

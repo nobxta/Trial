@@ -144,7 +144,9 @@ function loadSupportedAssetNetworks(): SupportedAssetNetwork[] {
         network: networkName,
         networkCode,
         coingeckoId: asset.coingeckoId,
-        imageUrl: `https://nowpayments.io/images/coins/${asset.symbol.toLowerCase()}.svg`,
+        // NOWPayments coin images are keyed by the NOWPayments currency id (e.g. usdttrc20, eth, btc)
+        // NOT always by symbol. Using `id` fixes missing logos for many assets/networks.
+        imageUrl: `https://nowpayments.io/images/coins/${id}.svg`,
         enabled: true,
       });
     }

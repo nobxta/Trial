@@ -4,15 +4,27 @@ import { getBaseUrl } from './email-utils';
 import { getVerificationEmailTemplate } from './email-template';
 import { getEmailSetting } from './email-settings';
 import { getFromHeader, type EmailCategory } from './email-from';
+import { getSmptConfig } from './env';
+import { supabaseAdmin } from './supabase';
+
+/** SMTP connection timeout (ms). */
+const SMTP_CONNECTION_TIMEOUT_MS = 10_000;
+/** SMTP socket/send timeout (ms). Prevents hung sends. */
+const SMTP_SOCKET_TIMEOUT_MS = 30_000;
+/** Max time for a single sendMail call (ms). */
+const SMTP_SEND_TIMEOUT_MS = 25_000;
+/** Retry only for connection-level errors; one retry after this delay (ms). No retry on success or after DATA accepted. */
+const SMTP_RETRY_DELAY_MS = 2_000;
+
+const CONNECTION_ERROR_CODES = new Set(['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED', 'ENOTFOUND']);
 
 let transporter: nodemailer.Transporter | null = null;
 
 /**
- * @deprecated Queue system removed - emails now send instantly
- * This function is kept for reference but should not be called.
- * Use sendEmailViaSMTP() directly instead.
+ * Insert an email into email_queue for async delivery by cron.
+ * Does not block on SMTP. Returns true if inserted, false on failure (graceful).
  */
-export async function queueEmail({
+export async function enqueueEmail({
   to,
   subject,
   html,
@@ -23,8 +35,58 @@ export async function queueEmail({
   html: string;
   text?: string;
 }): Promise<boolean> {
-  console.error('❌ queueEmail() is deprecated - emails now send instantly. This should not be called.');
-  throw new Error('queueEmail() is deprecated. Use direct SMTP sending instead.');
+  if (typeof window !== 'undefined') return false;
+  if (!supabaseAdmin) {
+    console.error('❌ [MintMove] Cannot enqueue email: Supabase not configured');
+    return false;
+  }
+  try {
+    const { error } = await supabaseAdmin.from('email_queue').insert({
+      to_email: to,
+      subject,
+      html,
+      text: text ?? null,
+      status: 'pending',
+      scheduled_at: new Date().toISOString(),
+    });
+    if (error) {
+      console.error('❌ [MintMove] Failed to enqueue email:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err: any) {
+    console.error('❌ [MintMove] Failed to enqueue email:', err?.message ?? err);
+    return false;
+  }
+}
+
+/**
+ * Queue verification email (non-blocking). Uses same template as sendVerificationEmail.
+ * Returns true if queued or verification disabled, false if queue insert failed.
+ */
+export async function enqueueVerificationEmail(
+  email: string,
+  token: string,
+  request?: NextRequest
+): Promise<boolean> {
+  try {
+    const verificationEnabled = await getEmailSetting('verification_enabled', 'true');
+    if (verificationEnabled !== 'true') {
+      return true;
+    }
+    const baseUrl = getBaseUrl(request);
+    const verificationUrl = `${baseUrl}/verify-email?token=${token}`;
+    const { text, html } = getVerificationEmailTemplate(verificationUrl, email);
+    return enqueueEmail({
+      to: email,
+      subject: 'Verify your MintMove account',
+      html,
+      text,
+    });
+  } catch (err: any) {
+    console.error('❌ [MintMove] enqueueVerificationEmail failed:', err?.message ?? err);
+    return false;
+  }
 }
 
 /**
@@ -51,7 +113,8 @@ export async function sendEmailViaSMTP({
   messageId?: string;
 }): Promise<{ success: boolean; messageId?: string; error?: string }> {
   if (!transporter) {
-    const error = 'SMTP transporter not configured. Please set SMTP_USER and SMTP_PASS environment variables.';
+    const error =
+      'SMTP transporter not configured. Set SMTP_USER and SMTP_PASS in your environment.';
     console.error(`❌ [MintMove] Email failed to ${to} (${category}): ${error}`);
     return { success: false, error };
   }
@@ -74,35 +137,62 @@ export async function sendEmailViaSMTP({
     messageId: messageId,
   };
 
+  const sendWithTimeout = (): Promise<{ success: true; messageId?: string }> =>
+    new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error(`SMTP send timeout after ${SMTP_SEND_TIMEOUT_MS}ms`));
+      }, SMTP_SEND_TIMEOUT_MS);
+      transporter!
+        .sendMail(mailOptions)
+        .then((result) => {
+          clearTimeout(timer);
+          resolve({ success: true, messageId: result.messageId });
+        })
+        .catch((err) => {
+          clearTimeout(timer);
+          reject(err);
+        });
+    });
+
   try {
-    const result = await transporter.sendMail(mailOptions);
+    const result = await sendWithTimeout();
     console.log(`✅ [MintMove] Email sent to ${to} (${category}): ${subject}`);
     return { success: true, messageId: result.messageId };
   } catch (error: any) {
     const errorMessage = error.message || String(error);
+    const isConnectionError = CONNECTION_ERROR_CODES.has(error?.code);
+    if (isConnectionError) {
+      await new Promise((r) => setTimeout(r, SMTP_RETRY_DELAY_MS));
+      try {
+        const retryResult = await sendWithTimeout();
+        console.log(`✅ [MintMove] Email sent to ${to} (${category}) on retry: ${subject}`);
+        return { success: true, messageId: retryResult.messageId };
+      } catch (retryErr: any) {
+        const retryMsg = retryErr?.message || String(retryErr);
+        console.error(`❌ [MintMove] Email failed to ${to} (${category}) after retry: ${retryMsg}`);
+        return { success: false, error: retryMsg };
+      }
+    }
     console.error(`❌ [MintMove] Email failed to ${to} (${category}): ${errorMessage}`);
     return { success: false, error: errorMessage };
   }
 }
 
-// Initialize transporter only if SMTP credentials are provided
-if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-  const port = parseInt(process.env.SMTP_PORT || '587');
-  const secure = port === 465 || process.env.SMTP_SECURE === 'true';
-  
-  transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: port,
-    secure: secure, // true for 465, false for other ports
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-    // Add connection timeout
-    connectionTimeout: 5000,
-    greetingTimeout: 5000,
-    socketTimeout: 5000,
-  });
+// Initialize transporter from centralized env (no direct process.env for secrets).
+// Timeouts avoid hung connections; retry in sendEmailViaSMTP is only for connection errors (no duplicate sends).
+if (typeof window === 'undefined') {
+  const smtp = getSmptConfig();
+  if (smtp) {
+    transporter = nodemailer.createTransport({
+      host: smtp.host,
+      port: smtp.port,
+      secure: smtp.secure,
+      auth: { user: smtp.user, pass: smtp.pass },
+      connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS,
+      greetingTimeout: SMTP_CONNECTION_TIMEOUT_MS,
+      socketTimeout: SMTP_SOCKET_TIMEOUT_MS,
+    });
+  }
 }
 
 export async function sendVerificationEmail(
@@ -126,7 +216,8 @@ export async function sendVerificationEmail(
   
   // Check if SMTP is configured
   if (!transporter) {
-    const error = 'SMTP transporter not configured. Please set SMTP_USER and SMTP_PASS environment variables.';
+    const error =
+      'SMTP transporter not configured. Set SMTP_USER and SMTP_PASS in your environment.';
     console.error(`❌ Email failed to ${email}: ${error}`);
     throw new Error(error);
   }
@@ -166,7 +257,8 @@ export async function sendGenericEmail(
 ): Promise<boolean> {
   // Check if SMTP is configured
   if (!transporter) {
-    const error = 'SMTP transporter not configured. Please set SMTP_USER and SMTP_PASS environment variables.';
+    const error =
+      'SMTP transporter not configured. Set SMTP_USER and SMTP_PASS in your environment.';
     console.error(`❌ Email failed to ${to}: ${error}`);
     throw new Error(error);
   }

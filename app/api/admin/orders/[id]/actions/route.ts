@@ -16,10 +16,7 @@ export async function POST(
 ) {
   try {
     const admin = await requireAdminRole('operator');
-    
-    // Check maintenance mode (blocks all write operations)
-    await requireNotMaintenanceMode();
-    
+
     const { action, reason, payoutHash } = await request.json();
 
     const ipAddress = request.headers.get('x-forwarded-for') || 
@@ -27,7 +24,7 @@ export async function POST(
                      'unknown';
     const userAgent = request.headers.get('user-agent') || 'unknown';
 
-    // Get current order state for logging
+    // Get current order state for logging and guards
     const { data: currentOrder } = await supabaseAdmin!
       .from('orders')
       .select('*')
@@ -41,9 +38,20 @@ export async function POST(
       );
     }
 
-    // STATE GUARDS: Server-side validation
-    // Rule 1: Locked orders cannot be modified (except by Super Admin)
-    if (currentOrder.locked && admin.role !== 'super_admin') {
+    const currentInternalStatus = (currentOrder.internal_status || currentOrder.status) as InternalStatus;
+    // Funds-release exception: mark_completed and unlock must be allowed even during maintenance and when locked (operator)
+    // so payment-confirmed orders can always reach DONE and funds are never permanently locked.
+    const PAID_NOT_DONE_STATUSES: InternalStatus[] = ['PAYMENT_CONFIRMED', 'MANUAL_REVIEW', 'PROCESSING_BY_PROVIDER'];
+    const isFundsReleaseAction =
+      (action === 'mark_completed' || action === 'unlock') &&
+      PAID_NOT_DONE_STATUSES.includes(currentInternalStatus);
+
+    if (!isFundsReleaseAction) {
+      await requireNotMaintenanceMode();
+    }
+
+    // Rule 1: Locked orders cannot be modified (except Super Admin, or operator doing funds-release for paid-but-not-done)
+    if (currentOrder.locked && admin.role !== 'super_admin' && !isFundsReleaseAction) {
       return NextResponse.json(
         { error: 'Order is locked and cannot be modified' },
         { status: 403 }
@@ -51,7 +59,6 @@ export async function POST(
     }
 
     // Rule 2: DONE orders cannot be marked FAILED
-    const currentInternalStatus = (currentOrder.internal_status || currentOrder.status) as InternalStatus;
     if (action === 'mark_failed' && (currentInternalStatus === 'DONE' || currentOrder.status === 'DONE')) {
       return NextResponse.json(
         { error: 'DONE orders cannot be marked as failed' },
@@ -129,9 +136,16 @@ export async function POST(
             { status: 400 }
           );
         }
+        // Always use order's payment_mode so we hit the correct API (live vs sandbox)
+        if (currentOrder.payment_mode == null || currentOrder.payment_mode === '') {
+          return NextResponse.json(
+            { error: 'Order has no payment_mode set; cannot verify (fix order data or use resync)' },
+            { status: 400 }
+          );
+        }
 
         try {
-          const paymentStatus = await getPaymentStatus(currentOrder.payment_id);
+          const paymentStatus = await getPaymentStatus(currentOrder.payment_id, currentOrder.payment_mode);
           const providerInternalStatus = mapProviderStatusToInternal(paymentStatus.payment_status);
           
           // Log the verification (read-only action)
@@ -190,8 +204,18 @@ export async function POST(
           payment_id: currentOrder.payment_id,
         };
 
-        // Fetch status from NOWPayments
-        const paymentStatus = await getPaymentStatus(currentOrder.payment_id);
+        // Use order's payment_mode; if null (legacy), dual-probe sandbox then live
+        let paymentStatus: { payment_status?: string };
+        const resyncMode = currentOrder.payment_mode && currentOrder.payment_mode !== '' ? currentOrder.payment_mode : undefined;
+        if (resyncMode) {
+          paymentStatus = await getPaymentStatus(currentOrder.payment_id, resyncMode);
+        } else {
+          try {
+            paymentStatus = await getPaymentStatus(currentOrder.payment_id, 'sandbox');
+          } catch {
+            paymentStatus = await getPaymentStatus(currentOrder.payment_id, 'live');
+          }
+        }
         const mappedStatus = mapProviderStatusToInternal(paymentStatus.payment_status) as InternalStatus;
         
         // CRITICAL: In manual payout mode, prevent automatic DONE status during resync

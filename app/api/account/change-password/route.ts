@@ -46,14 +46,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Update password
-    const success = await changeUserPassword(authUser.userId, newPassword);
-    if (!success) {
-      return NextResponse.json(
-        { success: false, error: 'Failed to update password' },
-        { status: 500 }
-      );
-    }
+    await changeUserPassword(authUser.userId, newPassword);
 
     return NextResponse.json({
       success: true,
@@ -62,7 +55,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Change password error:', error);
     return NextResponse.json(
-      { success: false, error: 'Internal server error' },
+      { success: false, error: 'Something went wrong. Please try again.' },
       { status: 500 }
     );
   }

@@ -26,14 +26,13 @@ export type InternalStatus =
   | 'EXPIRED';
 
 // ============================================================================
-// USER-FACING STATUSES (Simplified, human-friendly)
+// USER-FACING STATUSES (Professional flow: Awaiting deposit → Deposit received → Exchanging → Completed)
 // ============================================================================
 
 export type UserStatus =
-  | 'Waiting for payment'
-  | 'Waiting for confirmation'
-  | 'Payment confirmed'
-  | 'Processing'
+  | 'Awaiting deposit'
+  | 'Deposit received'
+  | 'Exchanging'
   | 'Completed'
   | 'Failed'
   | 'Expired';
@@ -65,32 +64,35 @@ export type StatusSource = 'webhook' | 'admin' | 'system';
 // ============================================================================
 
 /**
- * Map internal status to user-facing status
- * This is the ONLY function frontend should use to display status
+ * Map internal status to user-facing status (professional flow).
+ * Flow: Awaiting deposit → Deposit received → Exchanging → Completed.
  */
 export function getUserFacingStatus(internalStatus: string | null): UserStatus {
   if (!internalStatus) {
-    return 'Waiting for payment';
+    return 'Awaiting deposit';
   }
 
   const mapping: Record<InternalStatus, UserStatus> = {
-    'NEW': 'Waiting for payment',
-    'AWAITING_DEPOSIT': 'Waiting for payment',
-    'CONFIRMING': 'Waiting for confirmation',
-    'PAYMENT_CONFIRMED': 'Payment confirmed',
-    'PROCESSING_BY_PROVIDER': 'Processing',
-    'MANUAL_REVIEW': 'Processing',
+    'NEW': 'Awaiting deposit',
+    'AWAITING_DEPOSIT': 'Awaiting deposit',
+    'CONFIRMING': 'Deposit received',       // Payment seen, confirming on blockchain
+    'PAYMENT_CONFIRMED': 'Exchanging',      // Confirmed; exchange in progress
+    'PROCESSING_BY_PROVIDER': 'Exchanging',
+    'MANUAL_REVIEW': 'Exchanging',
     'DONE': 'Completed',
     'FAILED': 'Failed',
     'EXPIRED': 'Expired',
   };
 
-  return mapping[internalStatus as InternalStatus] || 'Waiting for payment';
+  return mapping[internalStatus as InternalStatus] || 'Awaiting deposit';
 }
 
 /**
- * Get progress step number for UI (0-4)
- * Frontend should use this number directly, not calculate it
+ * Get progress step number for UI (0-3)
+ * Step 0: Awaiting deposit
+ * Step 1: Deposit received (confirming on blockchain)
+ * Step 2: Exchanging
+ * Step 3: Completed
  */
 export function getCurrentStep(internalStatus: string | null): number {
   if (!internalStatus) {
@@ -100,13 +102,13 @@ export function getCurrentStep(internalStatus: string | null): number {
   const stepMap: Record<InternalStatus, number> = {
     'NEW': 0,
     'AWAITING_DEPOSIT': 0,
-    'CONFIRMING': 1,
-    'PAYMENT_CONFIRMED': 2,
-    'PROCESSING_BY_PROVIDER': 3,
-    'MANUAL_REVIEW': 3,
-    'DONE': 4,
-    'FAILED': 0, // Show at beginning with error styling
-    'EXPIRED': 0, // Show at beginning with error styling
+    'CONFIRMING': 1,           // Webhook hit, awaiting confirmations
+    'PAYMENT_CONFIRMED': 2,    // Admin performs exchange
+    'PROCESSING_BY_PROVIDER': 2,
+    'MANUAL_REVIEW': 2,
+    'DONE': 3,                 // Admin sent funds – completed
+    'FAILED': 0,
+    'EXPIRED': 0,
   };
 
   return stepMap[internalStatus as InternalStatus] || 0;

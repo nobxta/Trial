@@ -9,7 +9,9 @@ export default function AdminSettingsPage() {
   const [payoutMode, setPayoutMode] = useState<'manual' | 'automatic'>('manual');
   const [changingPayoutMode, setChangingPayoutMode] = useState(false);
   const [paymentMode, setPaymentMode] = useState<'live' | 'sandbox'>('live');
+  const [sandboxCase, setSandboxCase] = useState<'success' | 'failed' | 'expired' | 'partially_paid'>('success');
   const [changingPaymentMode, setChangingPaymentMode] = useState(false);
+  const [changingSandboxCase, setChangingSandboxCase] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -34,6 +36,7 @@ export default function AdminSettingsPage() {
         if (paymentModeResponse.ok) {
           const data = await paymentModeResponse.json();
           setPaymentMode(data.paymentMode || 'live');
+          setSandboxCase(data.sandboxCase || 'success');
         }
       } catch (error) {
         console.error('Failed to fetch settings:', error);
@@ -131,6 +134,32 @@ export default function AdminSettingsPage() {
       alert('An error occurred');
     } finally {
       setChangingPaymentMode(false);
+    }
+  };
+
+  const handleChangeSandboxCase = async (newCase: 'success' | 'failed' | 'expired' | 'partially_paid') => {
+    if (newCase === sandboxCase) return;
+    setChangingSandboxCase(true);
+    try {
+      const response = await fetch('/api/admin/settings/payment-mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sandboxCase: newCase }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        alert(error.error || 'Failed to change sandbox case');
+        return;
+      }
+
+      const data = await response.json();
+      setSandboxCase(data.sandboxCase ?? newCase);
+      alert(`Sandbox case set to ${data.sandboxCase ?? newCase}. New sandbox payments will simulate this outcome.`);
+    } catch (error) {
+      alert('An error occurred');
+    } finally {
+      setChangingSandboxCase(false);
     }
   };
 
@@ -243,10 +272,41 @@ export default function AdminSettingsPage() {
               🟡 Sandbox Mode
             </button>
           </div>
-          <div className="text-xs" style={{ color: 'var(--admin-text-muted)' }}>
+          <div className="text-xs mb-4" style={{ color: 'var(--admin-text-muted)' }}>
             Current mode: <strong>{paymentMode === 'live' ? 'Live' : 'Sandbox'}</strong> | 
             Change takes effect immediately (no redeploy required)
           </div>
+          {paymentMode === 'sandbox' && (
+            <div className="pt-4" style={{ borderTop: '1px solid var(--admin-border)' }}>
+              <p className="text-sm font-semibold mb-2" style={{ color: 'var(--admin-text-primary)' }}>
+                Sandbox case (simulated outcome for new payments)
+              </p>
+              <p className="text-xs mb-3" style={{ color: 'var(--admin-text-muted)' }}>
+                Choose how sandbox payments will behave: success, failed, expired, or partially_paid.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {(['success', 'failed', 'expired', 'partially_paid'] as const).map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => handleChangeSandboxCase(c)}
+                    disabled={changingSandboxCase || sandboxCase === c}
+                    className="admin-btn"
+                    style={{
+                      background: sandboxCase === c ? 'var(--admin-warning)' : 'var(--admin-surface)',
+                      color: sandboxCase === c ? 'white' : 'var(--admin-text-secondary)',
+                      opacity: (changingSandboxCase || sandboxCase === c) ? 0.8 : 1,
+                      textTransform: 'capitalize',
+                    }}
+                  >
+                    {c.replace('_', ' ')}
+                  </button>
+                ))}
+              </div>
+              <div className="text-xs mt-2" style={{ color: 'var(--admin-text-muted)' }}>
+                Current: <strong>{sandboxCase.replace('_', ' ')}</strong>
+              </div>
+            </div>
+          )}
         </div>
 
         <div>

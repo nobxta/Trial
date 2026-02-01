@@ -32,32 +32,38 @@ export default function OrderDetails({
   confirmationsNeeded,
   timeRemaining: initialTimeRemaining,
   createdAt,
-  isExpired,
+  isExpired: isExpiredProp,
   receiveSymbol,
   receiveDisplayName,
   internalStatus,
 }: OrderDetailsProps) {
   const [timeRemaining, setTimeRemaining] = useState(initialTimeRemaining);
+  const [expiredByTimer, setExpiredByTimer] = useState(false);
   const [copiedAddress, setCopiedAddress] = useState(false);
   const [copiedOrderId, setCopiedOrderId] = useState(false);
 
-  // Only update time remaining if order is not expired
+  const isExpired = isExpiredProp || expiredByTimer;
+
   useEffect(() => {
-    if (isExpired) {
+    if (isExpiredProp) {
       setTimeRemaining(0);
+      setExpiredByTimer(true);
       return;
     }
-    
+    setTimeRemaining(initialTimeRemaining);
+  }, [isExpiredProp, initialTimeRemaining]);
+
+  useEffect(() => {
+    if (isExpired) return;
     const interval = setInterval(() => {
       setTimeRemaining((prev) => {
         if (prev <= 1) {
-          clearInterval(interval);
+          setExpiredByTimer(true);
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
-
     return () => clearInterval(interval);
   }, [isExpired]);
 
@@ -82,60 +88,58 @@ export default function OrderDetails({
     }
   };
 
+  const cardClass = "bg-[#1a1d23]/60 backdrop-blur-xl border border-white/[0.05] rounded-2xl shadow-2xl shadow-black/20";
+  const under10Min = !isExpired && timeRemaining > 0 && timeRemaining < 600;
+
+  const labelClass = "text-xs font-semibold text-gray-400 uppercase tracking-wider shrink-0 min-w-[100px]";
+
   return (
     <div className="space-y-6">
       {/* Order Meta Information */}
-      <div className="bg-gradient-to-br from-[#0f1115] to-[#141820] rounded-2xl border border-[#1e2329]/60 shadow-lg p-6 sm:p-8">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-          <div>
-            <div className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider mb-2">
-              Order ID
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-base font-mono font-semibold text-white">{orderId}</span>
+      <div className={`${cardClass} p-4 sm:p-8`}>
+        <div className="flex flex-col gap-4 sm:gap-5">
+          <div className="flex flex-wrap sm:flex-nowrap justify-between items-center gap-2 min-w-0">
+            <span className={labelClass}>Order ID</span>
+            <div className="flex items-center gap-2 min-w-0 flex-1 justify-end sm:justify-end">
+              <span className="text-sm sm:text-base font-mono font-semibold text-white truncate">{orderId}</span>
               <button
                 onClick={() => copyToClipboard(orderId, "order")}
-                className="p-1.5 hover:bg-[#1e2329] rounded-lg transition-colors"
+                className="relative p-1.5 hover:bg-white/5 rounded-lg transition-colors text-gray-400 hover:text-blue-500 shrink-0"
                 title="Copy Order ID"
               >
                 {copiedOrderId ? (
-                  <Check className="w-4 h-4 text-[#10b981]" />
+                  <>
+                    <Check className="w-4 h-4 text-green-500" />
+                    <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-gray-800 text-xs text-white rounded shadow-lg whitespace-nowrap">Copied!</span>
+                  </>
                 ) : (
-                  <Copy className="w-4 h-4 text-[#8b949e] hover:text-white" />
+                  <Copy className="w-4 h-4" />
                 )}
               </button>
             </div>
           </div>
 
-          <div>
-            <div className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider mb-2">
-              {isExpired ? "Status" : "Time Remaining"}
-            </div>
+          <div className="flex flex-wrap sm:flex-nowrap justify-between items-center gap-2 min-w-0">
+            <span className={labelClass}>{isExpired ? "Status" : "Time Remaining"}</span>
             {isExpired ? (
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-red-500/10 text-red-400 border border-red-500/20">
-                  Expired
-                </span>
-              </div>
+              <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-red-500/10 text-red-400 border border-red-500/20">
+                Expired
+              </span>
             ) : (
-              <div className="text-2xl font-bold text-[#3b82f6] font-mono">
+              <span className={`text-xl sm:text-2xl font-bold font-mono ${under10Min ? "text-amber-400" : "text-blue-500"}`}>
                 {formatTime(timeRemaining)}
-              </div>
+              </span>
             )}
           </div>
 
-          <div>
-            <div className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider mb-2">
-              Pricing Mode
-            </div>
-            <div className="text-base font-medium text-white">{orderType}</div>
+          <div className="flex flex-wrap sm:flex-nowrap justify-between items-center gap-2 min-w-0">
+            <span className={labelClass}>Pricing Mode</span>
+            <span className="text-sm sm:text-base font-medium text-white text-right">{orderType}</span>
           </div>
 
-          <div>
-            <div className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider mb-2">
-              Creation Time
-            </div>
-            <div className="text-base font-medium text-white">
+          <div className="flex flex-wrap sm:flex-nowrap justify-between items-center gap-2 min-w-0">
+            <span className={labelClass}>Creation Time</span>
+            <span className="text-sm sm:text-base font-medium text-white text-right">
               {createdAt.toLocaleString("en-US", {
                 month: "2-digit",
                 day: "2-digit",
@@ -143,56 +147,53 @@ export default function OrderDetails({
                 hour: "numeric",
                 minute: "2-digit",
               })}
-            </div>
+            </span>
           </div>
         </div>
       </div>
 
       {/* Payment / Deposit Section */}
-      <div className={`bg-gradient-to-br from-[#0f1115] to-[#141820] rounded-2xl border shadow-lg p-6 sm:p-8 ${
-        isExpired ? 'border-[#dc2626]/30 opacity-75' : 'border-[#1e2329]/60'
-      }`}>
-        <div className="mb-6">
-          <div className="flex items-center gap-3 mb-5">
-            <CryptoIcon 
-              symbol={depositSymbol} 
-              className="w-8 h-8"
+      <div className={`${cardClass} p-4 sm:p-8 transition-all duration-300 ${isExpired ? "border-red-500/30 opacity-90 grayscale backdrop-blur-sm" : ""}`}>
+        <div className="mb-4 sm:mb-6">
+          <div className="flex items-center gap-3 mb-4 sm:mb-5">
+            <CryptoIcon
+              symbol={depositSymbol}
+              className="w-8 h-8 flex-shrink-0"
               imageUrl={depositIconUrl || `https://nowpayments.io/images/coins/${depositSymbol.toLowerCase()}.svg`}
             />
-            <div>
-              <h3 className="text-xl font-bold text-white">
+            <div className="min-w-0 flex-1">
+              <h3 className="text-base sm:text-xl font-bold text-white leading-snug">
                 Send {depositAmount} {depositDisplayName || depositSymbol} to this address
               </h3>
               {!isExpired && (
-                <p className="text-sm text-[#8b949e] mt-1">
+                <p className="text-sm text-gray-400 mt-0.5 sm:mt-1">
                   Use the address below to complete your payment
                 </p>
               )}
             </div>
           </div>
           
-          <div className={`relative flex items-center gap-3 bg-[#0a0d11] rounded-xl p-4 border ${
-            isExpired 
-              ? 'border-red-500/30' 
-              : 'border-[#1e2329] hover:border-[#2a2f36] transition-colors'
+          <div className={`relative flex items-center gap-3 bg-white/5 rounded-xl p-4 border border-white/10 ${
+            isExpired ? "border-red-500/30" : ""
           }`}>
-            <code className={`flex-1 text-sm sm:text-base font-mono break-all ${
-              isExpired 
-                ? 'line-through text-[#6b7280]' 
-                : 'text-white'
+            <code className={`flex-1 min-w-0 text-xs sm:text-base font-mono break-all ${
+              isExpired ? "line-through text-gray-500" : "text-white"
             }`}>
               {depositAddress}
             </code>
             {!isExpired && (
               <button
                 onClick={() => copyToClipboard(depositAddress, "address")}
-                className="flex-shrink-0 p-2.5 bg-[#1e2329] hover:bg-[#2a2f36] rounded-lg transition-colors border border-[#2a2f36]"
+                className="relative flex-shrink-0 p-2.5 rounded-lg transition-colors text-gray-400 hover:text-blue-500 hover:bg-white/5"
                 title="Copy Address"
               >
                 {copiedAddress ? (
-                  <Check className="w-5 h-5 text-[#10b981]" />
+                  <>
+                    <Check className="w-5 h-5 text-green-500" />
+                    <span className="absolute -top-9 left-1/2 -translate-x-1/2 px-2 py-1 bg-gray-800 text-xs text-white rounded shadow-lg whitespace-nowrap z-10">Copied!</span>
+                  </>
                 ) : (
-                  <Copy className="w-5 h-5 text-[#8b949e] hover:text-white" />
+                  <Copy className="w-5 h-5" />
                 )}
               </button>
             )}
@@ -200,26 +201,21 @@ export default function OrderDetails({
         </div>
 
         {isExpired ? (
-          <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl">
-            <div className="flex items-start gap-3">
-              <div className="flex-shrink-0 w-5 h-5 rounded-full bg-red-500/20 flex items-center justify-center mt-0.5">
-                <svg className="w-3 h-3 text-red-400" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <div className="flex-1">
-                <div className="text-sm font-medium text-red-400 mb-1">
-                  Payment Window Expired
-                </div>
-                <div className="text-sm text-[#8b949e]">
-                  This payment window has expired. Please create a new order to continue.
-                </div>
-              </div>
-            </div>
+          <div className="p-4 sm:p-6 bg-red-500/10 border border-red-500/30 rounded-xl space-y-4">
+            <div className="text-sm font-semibold text-red-400">Order Expired. The payment window has closed.</div>
+            <a
+              href="/"
+              className="inline-flex items-center justify-center w-full sm:w-auto px-6 py-3 bg-[#2563eb] hover:bg-[#3b82f6] text-white font-semibold rounded-xl transition-colors high-contrast"
+            >
+              Back to Home
+            </a>
+            <p className="text-xs text-slate-500">
+              If you have already sent funds, please contact support with your Order ID: <span className="font-mono text-slate-400">{orderId}</span>
+            </p>
           </div>
         ) : (
-          <div className="p-4 bg-[#1e3a5f]/20 border border-[#3b82f6]/20 rounded-xl">
-            <div className="text-sm text-[#8b949e] leading-relaxed">
+          <div className="p-4 bg-blue-500/5 border border-blue-500/20 rounded-xl">
+            <div className="text-sm text-gray-400 leading-relaxed">
               The exchange rate will be fixed after receiving{" "}
               <span className="font-semibold text-white">{confirmationsNeeded} network confirmation{confirmationsNeeded > 1 ? "s" : ""}</span>.
               Then your funds will be sent to your destination address.

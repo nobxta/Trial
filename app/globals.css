@@ -872,9 +872,7 @@ tbody tr {
   100% {
     background-position: 200% center;
   }
-}
-
-.button-shimmer {
+}.button-shimmer {
   background: linear-gradient(
     90deg,
     transparent 0%,
@@ -883,9 +881,7 @@ tbody tr {
   );
   background-size: 200% 100%;
   animation: buttonShimmer 2s linear infinite;
-}
-
-/* Smooth scale animation for interactive elements */
+}/* Smooth scale animation for interactive elements */
 @keyframes scaleIn {
   from {
     transform: scale(0.95);
@@ -895,10 +891,12 @@ tbody tr {
     transform: scale(1);
     opacity: 1;
   }
+}.animate-scale-in {
+  animation: scaleIn 0.3s ease-out;
 }
 
-.animate-scale-in {
-  animation: scaleIn 0.3s ease-out;
+.animate-card-enter {
+  animation: scaleIn 0.5s ease-out both;
 }
 
 /* Glow pulse animation */
@@ -930,4 +928,3 @@ tbody tr {
 .animate-border-glow {
   animation: borderGlow 2s ease-in-out infinite;
 }
-

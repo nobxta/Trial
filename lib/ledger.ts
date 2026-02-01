@@ -1,12 +1,9 @@
 import { supabaseAdmin } from './supabase';
-import { checkAndMark } from './idempotency';
 
 /**
  * FINANCIAL LEDGER SYSTEM
- * 
- * Immutable append-only ledger for all financial transactions.
- * This is the source of truth for balances - balances are always calculated,
- * never stored.
+ * Order completion is recorded via record_order_completion_atomic RPC so that
+ * idempotency claim and ledger writes are in one transaction. If idempotency exists, ledger MUST exist.
  */
 
 export interface LedgerEntry {
@@ -143,78 +140,41 @@ export async function getBalance(userId: string, currency: string): Promise<numb
 }
 
 /**
- * Record order completion in ledger (idempotent)
- * Creates entries for user credit and platform fee
- * 
- * @param orderId - Order ID
- * @param userId - User ID
- * @param toAmount - Amount user receives (credit)
- * @param toCurrency - Currency user receives
- * @param fromAmount - Amount user sent (for fee calculation)
- * @param fromCurrency - Currency user sent
- * @param feePercent - Platform fee percentage (e.g., 0.01 for 1%)
- * @returns true if successful, false otherwise
+ * Record order completion in ledger (idempotent).
+ * Uses record_order_completion_atomic RPC: claim + ledger in one transaction.
+ * Hard rule: if idempotency exists, ledger entry MUST exist.
  */
 export async function recordOrderCompletion(
   orderId: string,
-  userId: string,
+  userId: string | null,
   toAmount: number,
   toCurrency: string,
   fromAmount: number,
   fromCurrency: string,
-  feePercent: number = 0.01 // Default 1% fee
+  feePercent: number = 0.01
 ): Promise<boolean> {
-  // Idempotency key: ensure we only record this order once
-  const idempotencyKey = `order:${orderId}:ledger`;
-  const scope = 'ledger_entry';
-
-  // Check if already recorded
-  const isFirstExecution = await checkAndMark(scope, idempotencyKey);
-  if (!isFirstExecution) {
-    console.log(`⏭️  Ledger entry skipped (idempotency): Order ${orderId}`);
-    return true; // Already recorded
-  }
-
-  console.log(`📝 Recording ledger entries for order ${orderId}`);
-
-  // Calculate fee (fee is in the source currency)
-  const feeAmount = fromAmount * feePercent;
-
-  // Credit user with the converted amount (what they receive)
-  const userCreditSuccess = await credit({
-    order_id: orderId,
-    user_id: userId,
-    type: 'credit',
-    category: 'payout',
-    amount: toAmount,
-    currency: toCurrency,
-  });
-
-  if (!userCreditSuccess) {
-    console.error(`❌ Failed to credit user for order ${orderId}`);
+  if (!supabaseAdmin) {
+    console.error('❌ Cannot record order completion: Supabase not configured');
     return false;
   }
-
-  // Credit platform fee (if fee is in different currency, this would need adjustment)
-  // For now, assuming fee is in source currency
-  if (feeAmount > 0) {
-    const feeCreditSuccess = await credit({
-      order_id: orderId,
-      user_id: undefined, // System/platform account (no user_id for fees)
-      type: 'credit',
-      category: 'fee',
-      amount: feeAmount,
-      currency: fromCurrency,
-    });
-
-    if (!feeCreditSuccess) {
-      console.error(`❌ Failed to record fee for order ${orderId}`);
-      // User credit already recorded, so return true
-      // Fee recording failure is logged but doesn't block
-    }
+  const { data, error } = await supabaseAdmin.rpc('record_order_completion_atomic', {
+    p_order_id: orderId,
+    p_user_id: userId ?? null,
+    p_to_amount: toAmount,
+    p_to_currency: toCurrency,
+    p_from_amount: fromAmount,
+    p_from_currency: fromCurrency,
+    p_fee_percent: feePercent,
+  });
+  if (error) {
+    console.error(`❌ record_order_completion_atomic failed for order ${orderId}:`, error);
+    return false;
   }
-
-  console.log(`✅ Ledger entries recorded for order ${orderId}`);
+  if (data === true) {
+    console.log(`✅ Ledger recorded for order ${orderId}`);
+  } else {
+    console.log(`⏭️  Ledger skipped (idempotent): Order ${orderId}`);
+  }
   return true;
 }
 

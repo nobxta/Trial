@@ -3,27 +3,8 @@ import bcrypt from 'bcryptjs';
 import { cookies } from 'next/headers';
 import { NextRequest } from 'next/server';
 import { supabaseAdmin } from './supabase';
+import { getJwtSecret } from './env';
 
-// CRITICAL: JWT_SECRET must be set in production - no default allowed
-function getJwtSecret(): string {
-  const secret = process.env.JWT_SECRET;
-  
-  if (process.env.NODE_ENV === 'production') {
-    if (!secret || secret === 'your-secret-key-change-in-production') {
-      throw new Error('JWT_SECRET must be set to a secure random string in production. Do not use the default value.');
-    }
-    return secret;
-  }
-  
-  // Development: allow default but warn
-  if (!secret || secret === 'your-secret-key-change-in-production') {
-    console.warn('⚠️  JWT_SECRET is using default value. Change it before deploying to production.');
-  }
-  
-  return secret || 'your-secret-key-change-in-production';
-}
-
-const JWT_SECRET = getJwtSecret();
 const JWT_EXPIRES_IN = '7d';
 
 export interface AdminTokenPayload {
@@ -45,7 +26,9 @@ export interface AdminUser {
 
 function checkSupabase() {
   if (!supabaseAdmin) {
-    throw new Error('Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in your environment variables.');
+    throw new Error(
+      'Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in your environment.'
+    );
   }
 }
 
@@ -58,12 +41,14 @@ export async function verifyPassword(password: string, hashedPassword: string): 
 }
 
 export function generateAdminToken(payload: AdminTokenPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+  const secret = getJwtSecret();
+  return jwt.sign(payload, secret, { expiresIn: JWT_EXPIRES_IN });
 }
 
 export function verifyAdminToken(token: string): AdminTokenPayload | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as AdminTokenPayload;
+    const secret = getJwtSecret();
+    return jwt.verify(token, secret) as AdminTokenPayload;
   } catch {
     return null;
   }

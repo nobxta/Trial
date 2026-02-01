@@ -2,34 +2,31 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { sendEmailViaSMTP } from '@/lib/email';
 import type { EmailCategory } from '@/lib/email-from';
+import { recordCronSuccess, recordCronFailure, alertIfCronStale, getPendingEmailCount, alertIfEmailBacklog } from '@/lib/cron-runs';
+
+const ENDPOINT = '/api/cron/process-email-queue';
 
 /**
  * Vercel Cron Job: Process email queue
- * 
- * This endpoint processes pending emails from the email_queue table.
- * It should be called frequently (e.g., every 1-5 minutes) by Vercel Cron.
- * 
- * Security: Protected by Vercel Cron secret (automatically verified by Vercel)
- * 
- * Logic:
- * - Fetches up to 10 pending emails where scheduled_at <= now()
- * - Attempts to send each via SMTP
- * - On success: marks as 'sent'
- * - On failure: increments attempts, reschedules with exponential backoff
- * - After 3 failed attempts: marks as 'failed'
+ * Security: In production CRON_SECRET must exist and be non-empty; fail closed.
  */
 export async function GET(request: NextRequest) {
-  try {
-    // Verify this is called by Vercel Cron (security check)
-    const authHeader = request.headers.get('authorization');
-    const cronSecret = process.env.CRON_SECRET;
-    
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
+  const authHeader = request.headers.get('authorization');
+  const cronSecret = process.env.CRON_SECRET?.trim();
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  if (isProduction) {
+    if (!cronSecret) {
+      console.error('[Cron] CRON_SECRET missing in production');
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
+  }
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+  }
+
+  try {
+    await alertIfCronStale(ENDPOINT);
 
     if (!supabaseAdmin) {
       return NextResponse.json(
@@ -57,8 +54,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const pendingCount = await getPendingEmailCount();
+    alertIfEmailBacklog(pendingCount);
+
     if (!pendingEmails || pendingEmails.length === 0) {
       console.log('✅ [Email Queue] No pending emails to process');
+      await recordCronSuccess(ENDPOINT);
       return NextResponse.json({
         success: true,
         processed: 0,
@@ -185,6 +186,7 @@ export async function GET(request: NextRequest) {
     }
 
     console.log(`✅ [Email Queue] Processing complete: ${sentCount} sent, ${failedCount} failed, ${retriedCount} retried`);
+    await recordCronSuccess(ENDPOINT);
 
     return NextResponse.json({
       success: true,
@@ -197,6 +199,7 @@ export async function GET(request: NextRequest) {
 
   } catch (error: any) {
     console.error('❌ [Email Queue] Fatal error processing queue:', error);
+    await recordCronFailure(ENDPOINT, error?.message ?? String(error));
     return NextResponse.json(
       {
         success: false,

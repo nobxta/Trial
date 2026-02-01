@@ -260,7 +260,7 @@ async function test5_checkUserStatusMapping() {
     
     // Check that user_status is safe (no internal terms)
     const forbiddenTerms = ['NEW', 'PAYMENT_CONFIRMED', 'MANUAL_REVIEW', 'PROCESSING_BY_PROVIDER', 'AWAITING_DEPOSIT'];
-    const safeStatuses = ['Waiting for payment', 'Payment confirmed', 'Processing', 'Completed', 'Failed', 'Expired'];
+    const safeStatuses = ['Waiting for payment', 'Waiting for confirmation', 'Performing exchange', 'Completed', 'Failed', 'Expired'];
     
     let allSafe = true;
     const issues: string[] = [];

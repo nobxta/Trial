@@ -1,14 +1,12 @@
 /**
- * Get sandbox case from environment variable
- * 
- * Reads NOWPAYMENTS_SANDBOX_CASE and validates it against allowed values.
- * Defaults to 'success' if missing or invalid.
- * 
- * This is backend-only and never exposed to frontend/admin UI/logs.
+ * Sandbox case types and validation.
+ * Admin-controlled sandbox case is stored in exchange_settings (key: sandbox_case)
+ * and read via getSandboxCase() from @/lib/payment-mode. Env fallback below is
+ * deprecated in favor of admin settings.
  */
 
-const ALLOWED_SANDBOX_CASES = ['success', 'failed', 'expired', 'partially_paid'] as const;
-export type SandboxCase = typeof ALLOWED_SANDBOX_CASES[number];
+export const ALLOWED_SANDBOX_CASES = ['success', 'failed', 'expired', 'partially_paid'] as const;
+export type SandboxCase = (typeof ALLOWED_SANDBOX_CASES)[number];
 
 /**
  * Get validated sandbox case from environment variable

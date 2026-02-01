@@ -11,8 +11,9 @@ import {
   flexRender,
 } from '@tanstack/react-table';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
-import { Lock } from 'lucide-react';
+import { Lock, CheckCircle, Copy } from 'lucide-react';
 
 interface Order {
   id: string;
@@ -27,6 +28,8 @@ interface Order {
   from_network?: string | null;
   to_currency: string;
   to_amount: string;
+  to_network?: string | null;
+  to_address: string | null;
   created_at: string;
   updated_at: string;
   locked: boolean;
@@ -55,9 +58,34 @@ const getStatusStyle = (status: string) => {
   return styles[status] || { bg: 'var(--admin-surface)', text: 'var(--admin-text-secondary)' };
 };
 
+const MANUAL_PAYOUT_STATUSES = ['PAYMENT_CONFIRMED', 'MANUAL_REVIEW', 'PROCESSING_BY_PROVIDER'];
+
 const OrdersTable = memo(function OrdersTable({ orders, total, isReviewQueue = false }: OrdersTableProps) {
+  const router = useRouter();
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [showUnpaid, setShowUnpaid] = useState<boolean>(false);
+  const [confirmingOrderId, setConfirmingOrderId] = useState<string | null>(null);
+
+  const handleMarkConfirmed = async (orderId: string) => {
+    setConfirmingOrderId(orderId);
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}/actions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'mark_completed' }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.error || 'Failed to mark as confirmed');
+        return;
+      }
+      router.refresh();
+    } catch (e) {
+      alert('An error occurred');
+    } finally {
+      setConfirmingOrderId(null);
+    }
+  };
 
   const columns = useMemo<ColumnDef<Order>[]>(
     () => [
@@ -166,8 +194,77 @@ const OrdersTable = memo(function OrdersTable({ orders, total, isReviewQueue = f
           </div>
         ),
       },
+      {
+        id: 'manual_payout',
+        header: 'Manual payout',
+        cell: ({ row }) => {
+          const order = row.original;
+          const status = order.internal_status || order.status;
+          const showPayout = MANUAL_PAYOUT_STATUSES.includes(status);
+          const isConfirming = confirmingOrderId === order.order_id;
+
+          if (!showPayout) {
+            return <span className="text-xs" style={{ color: 'var(--admin-text-muted)' }}>—</span>;
+          }
+
+          const addr = order.to_address;
+          const payLabel = `${parseFloat(order.to_amount).toFixed(8)} ${order.to_currency}`;
+
+          return (
+            <div className="flex flex-col gap-2 max-w-[220px]">
+              {addr && (
+                <div className="flex items-center gap-1 min-w-0">
+                  <code
+                    className="font-mono text-[10px] truncate flex-1"
+                    style={{ color: 'var(--admin-text-primary)' }}
+                    title={addr}
+                  >
+                    {addr}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      try {
+                        await navigator.clipboard.writeText(addr);
+                        if ('vibrate' in navigator) navigator.vibrate(10);
+                      } catch {}
+                    }}
+                    className="shrink-0 p-1 rounded hover:bg-white/10"
+                    aria-label="Copy address"
+                  >
+                    <Copy className="w-3 h-3" style={{ color: 'var(--admin-text-muted)' }} />
+                  </button>
+                </div>
+              )}
+              <div className="text-xs font-semibold" style={{ color: 'var(--admin-primary-light)' }}>
+                Pay: {payLabel}
+              </div>
+              <button
+                type="button"
+                onClick={(e) => { e.preventDefault(); handleMarkConfirmed(order.order_id); }}
+                disabled={isConfirming || !!order.locked}
+                className="admin-btn admin-btn-primary inline-flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs font-semibold"
+                style={{ opacity: (isConfirming || order.locked) ? 0.6 : 1 }}
+              >
+                {isConfirming ? (
+                  <>
+                    <span className="inline-block w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    Confirming…
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    Confirmed
+                  </>
+                )}
+              </button>
+            </div>
+          );
+        },
+      },
     ],
-    []
+    [confirmingOrderId]
   );
 
   const filteredOrders = useMemo(() => {

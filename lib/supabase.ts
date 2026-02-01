@@ -1,11 +1,21 @@
 import { createClient } from '@supabase/supabase-js';
+import {
+  getSupabaseUrl,
+  getSupabaseAnonKey,
+  getSupabaseServiceRoleKey,
+} from './env';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnonKey;
+const supabaseUrl = getSupabaseUrl();
+const supabaseAnonKey = getSupabaseAnonKey();
+const supabaseServiceRoleKey =
+  typeof window === 'undefined'
+    ? getSupabaseServiceRoleKey()
+    : getSupabaseAnonKey();
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn('⚠️  Missing Supabase environment variables. Please configure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY');
+  console.warn(
+    '⚠️  Missing Supabase environment variables. Configure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in your environment.'
+  );
 }
 
 // Client-side Supabase client (uses anon key)

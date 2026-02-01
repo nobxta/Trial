@@ -32,7 +32,7 @@ export async function GET() {
   } catch (error) {
     console.error('Get user preferences error:', error);
     return NextResponse.json(
-      { success: false, error: 'Internal server error' },
+      { success: false, error: 'Something went wrong. Please try again.' },
       { status: 500 }
     );
   }

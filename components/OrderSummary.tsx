@@ -3,12 +3,12 @@
 import CryptoIcon from "./CryptoIcon";
 
 interface OrderSummaryProps {
-  sendAmount: string; // Formatted crypto amount
+  sendAmount: string;
   sendSymbol: string;
   sendDisplayName?: string;
   sendIconUrl?: string;
-  sendAmountUsd?: number; // Optional USD equivalent for display
-  receiveAmount: string; // Formatted crypto amount
+  sendAmountUsd?: number;
+  receiveAmount: string;
   receiveSymbol: string;
   receiveDisplayName?: string;
   receiveIconUrl?: string;
@@ -19,88 +19,48 @@ export default function OrderSummary({
   sendSymbol,
   sendDisplayName,
   sendIconUrl,
-  sendAmountUsd,
-  receiveSymbol,
   receiveAmount,
+  receiveSymbol,
   receiveDisplayName,
   receiveIconUrl,
 }: OrderSummaryProps) {
   return (
-    <div className="bg-gradient-to-br from-[#0f1115] via-[#141820] to-[#0f1115] rounded-2xl sm:rounded-3xl border border-[#1e2329]/60 shadow-2xl shadow-black/20 p-4 sm:p-6 md:p-8 lg:p-10 mb-4 sm:mb-6 md:mb-8">
-      <div className="flex flex-col md:flex-row items-center justify-between gap-4 sm:gap-6 md:gap-8 lg:gap-12">
-        {/* Send Section */}
-        <div className="flex-1 w-full">
-          <div className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider mb-4">
-            You Send
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="flex-shrink-0">
-              <CryptoIcon 
-                symbol={sendSymbol} 
-                className="w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20"
-                imageUrl={sendIconUrl || `https://nowpayments.io/images/coins/${sendSymbol.toLowerCase()}.svg`}
-              />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-1 leading-tight">
-                {sendAmount}
-              </div>
-              <div className="text-base sm:text-lg md:text-xl lg:text-2xl font-semibold text-[#8b949e]">
-                {sendDisplayName || sendSymbol}
-              </div>
-              {sendAmountUsd && (
-                <div className="text-sm text-[#6b7280] mt-1">
-                  (~{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(sendAmountUsd)})
-                </div>
-              )}
+    <div className="rounded-lg border border-white/5 bg-[#12161f] p-6 sm:p-8">
+      <div className="grid grid-cols-2 md:flex md:flex-row md:items-center md:justify-between gap-4 md:gap-6">
+        <div className="flex flex-1 flex-col items-center md:items-start text-center md:text-left min-w-0">
+          <div className="text-slate-500 text-[11px] uppercase tracking-wider mb-1">You Pay</div>
+          <div className="flex items-center gap-2 min-w-0 justify-center md:justify-start">
+            <CryptoIcon
+              symbol={sendSymbol}
+              className="w-8 h-8 shrink-0"
+              imageUrl={sendIconUrl || `https://nowpayments.io/images/coins/${sendSymbol.toLowerCase()}.svg`}
+            />
+            <div className="min-w-0">
+              <div className="text-white font-semibold text-xl sm:text-2xl md:text-4xl truncate">{sendAmount}</div>
+              <div className="text-slate-500 text-xs sm:text-sm truncate">{sendDisplayName || sendSymbol}</div>
             </div>
           </div>
         </div>
-
-        {/* Arrow */}
-        <div className="flex-shrink-0 flex items-center justify-center">
-          <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded-full bg-[#1e2329] border border-[#2a2f36] flex items-center justify-center">
-            <svg
-              className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 text-[#3b82f6]"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2.5}
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M13 7l5 5m0 0l-5 5m5-5H6"
-              />
-            </svg>
-          </div>
+        <div className="hidden md:flex items-center justify-center shrink-0 w-6 h-6 rounded-full bg-white/5 border border-white/5 text-slate-500 backdrop-blur-sm" aria-hidden>
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+          </svg>
         </div>
-
-        {/* Receive Section */}
-        <div className="flex-1 w-full">
-          <div className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider mb-4">
-            You Receive
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="flex-shrink-0">
-              <CryptoIcon 
-                symbol={receiveSymbol} 
-                className="w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20"
-                imageUrl={receiveIconUrl || `https://nowpayments.io/images/coins/${receiveSymbol.toLowerCase()}.svg`}
-              />
+        <div className="flex flex-1 flex-col items-center md:items-end text-center md:text-right min-w-0">
+          <div className="text-slate-500 text-[11px] uppercase tracking-wider mb-1">You Receive</div>
+          <div className="flex items-center gap-2 min-w-0 justify-center md:justify-end">
+            <div className="min-w-0 text-center md:text-right">
+              <div className="text-white font-semibold text-xl sm:text-2xl md:text-4xl truncate">{receiveAmount}</div>
+              <div className="text-slate-500 text-xs sm:text-sm truncate">{receiveDisplayName || receiveSymbol}</div>
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-1 leading-tight">
-                {receiveAmount}
-              </div>
-              <div className="text-base sm:text-lg md:text-xl lg:text-2xl font-semibold text-[#8b949e]">
-                {receiveDisplayName || receiveSymbol}
-              </div>
-            </div>
+            <CryptoIcon
+              symbol={receiveSymbol}
+              className="w-8 h-8 shrink-0"
+              imageUrl={receiveIconUrl || `https://nowpayments.io/images/coins/${receiveSymbol.toLowerCase()}.svg`}
+            />
           </div>
         </div>
       </div>
     </div>
   );
 }
-

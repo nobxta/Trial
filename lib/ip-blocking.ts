@@ -1,10 +1,15 @@
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
+import { getSupabaseUrl, getSupabaseServiceRoleKey } from './env';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabaseUrl = getSupabaseUrl();
+const supabaseKey = getSupabaseServiceRoleKey();
+// Server-only: env validation ensures url/key are set when app runs.
+const supabase =
+  supabaseUrl && supabaseKey
+    ? createClient(supabaseUrl, supabaseKey)
+    : null;
+const supabaseClient = supabase!;
 
 export interface BlockedIP {
   id: string;
@@ -35,7 +40,7 @@ export async function isIPBlocked(ip: string): Promise<boolean> {
   const ipHash = hashIP(ip);
 
   // Check by exact IP address - active blocks that haven't expired
-  const { data: exactMatch } = await supabase
+  const { data: exactMatch } = await supabaseClient
     .from('blocked_ips')
     .select('id')
     .eq('ip_address', ip)
@@ -47,7 +52,7 @@ export async function isIPBlocked(ip: string): Promise<boolean> {
   if (exactMatch) return true;
 
   // Also check by IP hash (for privacy) - active blocks that haven't expired
-  const { data: hashMatch } = await supabase
+  const { data: hashMatch } = await supabaseClient
     .from('blocked_ips')
     .select('id')
     .eq('ip_hash', ipHash)
@@ -71,7 +76,7 @@ export async function blockIP(
 ): Promise<BlockedIP> {
   const ipHash = hashIP(ip);
 
-  const { data, error } = await supabase
+  const { data, error } = await supabaseClient
     .from('blocked_ips')
     .insert({
       ip_address: ip,
@@ -96,7 +101,7 @@ export async function blockIP(
  * Unblock an IP address
  */
 export async function unblockIP(ip: string): Promise<boolean> {
-  const { error } = await supabase
+  const { error } = await supabaseClient
     .from('blocked_ips')
     .update({ is_active: false })
     .eq('ip_address', ip)
@@ -109,7 +114,7 @@ export async function unblockIP(ip: string): Promise<boolean> {
  * Get all blocked IPs
  */
 export async function getAllBlockedIPs(includeInactive: boolean = false): Promise<BlockedIP[]> {
-  let query = supabase
+  let query = supabaseClient
     .from('blocked_ips')
     .select('*')
     .order('blocked_at', { ascending: false });

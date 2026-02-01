@@ -27,10 +27,10 @@ export async function GET(request: NextRequest) {
       success: true,
       orders: orders || [],
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Get orders error:', error);
     return NextResponse.json(
-      { success: false, error: 'Internal server error', details: error?.message },
+      { success: false, error: 'Something went wrong. Please try again.' },
       { status: 500 }
     );
   }

@@ -442,9 +442,6 @@ export default function ExchangeWidget() {
         
         const data = await response.json();
         if (data.success && data.limits) {
-          // #region agent log
-          fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ExchangeWidget.tsx:420',message:'UI Limits Fetched',data:{minAmount:data.limits.min_amount,maxAmount:data.limits.max_amount,cached:data.cached,stale:data.stale,sendCryptoId,receiveCryptoId,orderType},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-          // #endregion
           setExchangeLimits(data.limits);
         } else {
           throw new Error(data.error || 'Failed to fetch exchange limits');
@@ -1036,10 +1033,6 @@ export default function ExchangeWidget() {
                 setIsCreatingOrder(true);
                 const amount = parseFloat(sendAmount);
                 
-                // #region agent log
-                fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ExchangeWidget.tsx:1018',message:'UI Order Creation Start',data:{sendAmountString:sendAmount,parsedAmount:amount,exchangeLimitsMin:exchangeLimits?.min_amount,exchangeLimitsMax:exchangeLimits?.max_amount,orderType,rateType:orderType,sendCryptoId:displaySendCrypto?.id||sendCryptoId,receiveCryptoId:displayReceiveCrypto?.id||receiveCryptoId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-                // #endregion
-                
                 // All validation is now handled inline - button is disabled if invalid
                 // These checks are just safety nets, but should never trigger due to button state
                 if (!sendAmount || isNaN(amount) || amount <= 0) {
@@ -1060,6 +1053,15 @@ export default function ExchangeWidget() {
                   return; // Button should be disabled, but return silently if somehow clicked
                 }
 
+                // price_amount for NOWPayments must be USD value of what user SENDS (not receive amount)
+                const sendCoingeckoId = displaySendCrypto?.coingeckoId ?? sendCrypto?.coingeckoId ?? '';
+                const sendUsd = sendAmountUsd ?? (amount * (prices[sendCoingeckoId]?.usd ?? 0));
+                if (!sendUsd || sendUsd <= 0) {
+                  setIsCreatingOrder(false);
+                  setOrderError('Unable to get send amount value. Please try again.');
+                  return;
+                }
+
                 const feePercent = orderType === "fixed" ? fixedRateFee : floatRateFee;
                 const expectedReceive = applyFee(amount * exchangeRate, feePercent);
                 const orderId = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -1069,10 +1071,6 @@ export default function ExchangeWidget() {
                 const sendAssetId = displaySendCrypto?.id || sendCryptoId;
                 const receiveAssetId = displayReceiveCrypto?.id || receiveCryptoId;
                 const isFixedRate = orderType === 'fixed';
-                
-                // #region agent log
-                fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ExchangeWidget.tsx:1050',message:'Before refetching limits for final validation',data:{sendAmount:amount,sendAssetId,receiveAssetId,isFixedRate,orderType},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-                // #endregion
                 
                 const limitsResponse = await fetch(
                   `/api/exchange/limits?send_asset=${encodeURIComponent(sendAssetId)}&receive_asset=${encodeURIComponent(receiveAssetId)}&is_fixed_rate=${isFixedRate}`
@@ -1092,10 +1090,6 @@ export default function ExchangeWidget() {
                 }
                 
                 const freshLimits = limitsData.limits;
-                
-                // #region agent log
-                fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ExchangeWidget.tsx:1075',message:'Fresh limits fetched for validation',data:{sendAmount:amount,minAmount:freshLimits.min_amount,maxAmount:freshLimits.max_amount,isValid:amount>=freshLimits.min_amount&&(!freshLimits.max_amount||amount<=freshLimits.max_amount)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-                // #endregion
                 
                 // Final validation with fresh limits - MUST pass before proceeding
                 if (amount < freshLimits.min_amount) {
@@ -1121,16 +1115,12 @@ export default function ExchangeWidget() {
                   rate_type: orderType,
                   destination: destination.trim(),
                   order_id: orderId,
-                  price_amount: expectedReceive,
+                  price_amount: sendUsd,
                   price_currency: 'usd',
                   pay_currency: sendAssetId,
                   payout_address: destination.trim(),
                   payout_currency: receiveAssetId,
                 };
-                
-                // #region agent log
-                fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ExchangeWidget.tsx:1053',message:'UI Payload Before API Call',data:{send_amount:payload.send_amount,price_amount:payload.price_amount,expected_receive:payload.expected_receive,rate_type:payload.rate_type,send_asset:payload.send_asset,receive_asset:payload.receive_asset,payloadJson:JSON.stringify(payload)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-                // #endregion
                 
                 // Use the id field for NOWPayments compatibility
                 const response = await fetch('/api/payment', {
@@ -1142,10 +1132,6 @@ export default function ExchangeWidget() {
                 if (!response.ok) {
                   const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
                   const errorMsg = errorData.error || `Failed to create exchange order`;
-                  
-                  // #region agent log
-                  fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ExchangeWidget.tsx:1072',message:'UI API Error Response',data:{status:response.status,errorMessage:errorMsg,errorData},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-                  // #endregion
                   
                   throw new Error(errorMsg);
                 }

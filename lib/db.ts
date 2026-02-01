@@ -1,4 +1,5 @@
 import { supabaseAdmin } from './supabase';
+import { wrapDbError, isNotFoundError } from './db-errors';
 
 export interface User {
   id: string;
@@ -6,6 +7,8 @@ export interface User {
   password: string; // hashed
   emailVerified: boolean;
   verificationToken: string | null;
+  /** When the verification token expires (ISO string). Null if no token or legacy. */
+  verificationTokenExpiresAt: string | null;
   createdAt: string;
 }
 
@@ -26,15 +29,12 @@ export async function getUserByEmail(email: string): Promise<User | null> {
     .eq('email', email.toLowerCase().trim())
     .single();
 
-  if (error || !data) return null;
-  return {
-    id: data.id,
-    email: data.email,
-    password: data.password,
-    emailVerified: data.email_verified,
-    verificationToken: data.verification_token,
-    createdAt: data.created_at,
-  };
+  if (error) {
+    if (isNotFoundError(error.code)) return null;
+    throw wrapDbError(error, 'getUserByEmail');
+  }
+  if (!data) return null;
+  return mapUserRow(data);
 }
 
 // Find user by ID
@@ -47,13 +47,22 @@ export async function getUserById(id: string): Promise<User | null> {
     .eq('id', id)
     .single();
 
-  if (error || !data) return null;
+  if (error) {
+    if (isNotFoundError(error.code)) return null;
+    throw wrapDbError(error, 'getUserById');
+  }
+  if (!data) return null;
+  return mapUserRow(data);
+}
+
+function mapUserRow(data: any): User {
   return {
     id: data.id,
     email: data.email,
     password: data.password,
     emailVerified: data.email_verified,
     verificationToken: data.verification_token,
+    verificationTokenExpiresAt: data.verification_token_expires_at ?? null,
     createdAt: data.created_at,
   };
 }
@@ -68,15 +77,12 @@ export async function getUserByVerificationToken(token: string): Promise<User | 
     .eq('verification_token', token)
     .single();
 
-  if (error || !data) return null;
-  return {
-    id: data.id,
-    email: data.email,
-    password: data.password,
-    emailVerified: data.email_verified,
-    verificationToken: data.verification_token,
-    createdAt: data.created_at,
-  };
+  if (error) {
+    if (isNotFoundError(error.code)) return null;
+    throw wrapDbError(error, 'getUserByVerificationToken');
+  }
+  if (!data) return null;
+  return mapUserRow(data);
 }
 
 // Create new user
@@ -90,22 +96,16 @@ export async function createUser(user: Omit<User, 'id' | 'createdAt'>): Promise<
       password: user.password,
       email_verified: user.emailVerified,
       verification_token: user.verificationToken,
+      verification_token_expires_at: user.verificationTokenExpiresAt ?? null,
     })
     .select()
     .single();
 
   if (error) {
-    throw new Error(`Failed to create user: ${error.message}`);
+    throw wrapDbError(error, 'createUser');
   }
 
-  return {
-    id: data.id,
-    email: data.email,
-    password: data.password,
-    emailVerified: data.email_verified,
-    verificationToken: data.verification_token,
-    createdAt: data.created_at,
-  };
+  return mapUserRow(data);
 }
 
 // Update user
@@ -118,6 +118,7 @@ export async function updateUser(id: string, updates: Partial<User>): Promise<Us
   if (updates.password !== undefined) updateData.password = updates.password;
   if (updates.emailVerified !== undefined) updateData.email_verified = updates.emailVerified;
   if (updates.verificationToken !== undefined) updateData.verification_token = updates.verificationToken;
+  if (updates.verificationTokenExpiresAt !== undefined) updateData.verification_token_expires_at = updates.verificationTokenExpiresAt;
 
   const { data, error } = await supabaseAdmin!
     .from('users')
@@ -126,16 +127,13 @@ export async function updateUser(id: string, updates: Partial<User>): Promise<Us
     .select()
     .single();
 
-  if (error || !data) return null;
+  if (error) {
+    if (isNotFoundError(error.code)) return null;
+    throw wrapDbError(error, 'updateUser');
+  }
+  if (!data) return null;
 
-  return {
-    id: data.id,
-    email: data.email,
-    password: data.password,
-    emailVerified: data.email_verified,
-    verificationToken: data.verification_token,
-    createdAt: data.created_at,
-  };
+  return mapUserRow(data);
 }
 
 // Update user preferences
@@ -155,7 +153,8 @@ export async function updateUserPreferences(
     .update(updateData)
     .eq('id', userId);
 
-  return !error;
+  if (error) throw wrapDbError(error, 'updateUserPreferences');
+  return true;
 }
 
 // Change user password
@@ -173,7 +172,8 @@ export async function changeUserPassword(
     .update({ password: hashedPassword })
     .eq('id', userId);
 
-  return !error;
+  if (error) throw wrapDbError(error, 'changeUserPassword');
+  return true;
 }
 
 // Get user with preferences
@@ -192,7 +192,11 @@ export async function getUserWithPreferences(userId: string): Promise<{
     .eq('id', userId)
     .single();
 
-  if (error || !data) return null;
+  if (error) {
+    if (isNotFoundError(error.code)) return null;
+    throw wrapDbError(error, 'getUserWithPreferences');
+  }
+  if (!data) return null;
 
   return {
     id: data.id,

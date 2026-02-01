@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createPayment, getPaymentStatus, getExchangeLimits } from '@/lib/nowpayments';
 import { isValidAssetNetworkId, getAssetNetworkById } from '@/lib/supportedAssets';
 import { getAuthUser } from '@/lib/auth';
-import { createOrder } from '@/lib/db-orders';
+import { createOrderWithHistoryTransaction } from '@/lib/db-orders';
 import { validateExchangeRequest, validatePaymentRequest } from '@/lib/validation';
 import { getPaymentMode } from '@/lib/payment-mode';
-import { getSandboxCaseFromEnv, type SandboxCase } from '@/lib/sandbox-case';
+import { getSandboxCase } from '@/lib/payment-mode';
+import type { SandboxCase } from '@/lib/sandbox-case';
+import { getPublicBaseUrl } from '@/lib/env';
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,8 +26,8 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Calculate price_amount from expected_receive or use provided value
-      const priceAmount = body.price_amount || body.expected_receive || 0;
+      // price_amount must be USD value of send amount (what user pays) — NOT receive amount
+      const priceAmount = body.price_amount ?? body.expected_receive ?? 0;
       if (isNaN(priceAmount) || priceAmount <= 0) {
         return NextResponse.json(
           { error: 'price_amount or expected_receive must be a positive number' },
@@ -35,12 +37,7 @@ export async function POST(request: NextRequest) {
 
       // SERVER-SIDE VALIDATION: Check min/max limits from NOWPayments
       const sendAmount = parseFloat(body.send_amount);
-      
-      // #region agent log
-      fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payment/route.ts:37',message:'API Received Request',data:{send_amount:body.send_amount,sendAmount,price_amount:body.price_amount,expected_receive:body.expected_receive,send_asset:body.send_asset,receive_asset:body.receive_asset,rate_type:body.rate_type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payment/route.ts:37',message:'API Received Payload',data:{send_amountRaw:body.send_amount,send_amountParsed:sendAmount,price_amount:body.price_amount,expected_receive:body.expected_receive,rate_type:body.rate_type,send_asset:body.send_asset,receive_asset:body.receive_asset},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
-      
+
       if (isNaN(sendAmount) || sendAmount <= 0) {
         return NextResponse.json(
           { error: 'send_amount must be a positive number' },
@@ -52,10 +49,6 @@ export async function POST(request: NextRequest) {
       const sendAsset = getAssetNetworkById(body.send_asset);
       const receiveAsset = getAssetNetworkById(body.receive_asset);
 
-      // #region agent log
-      fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payment/route.ts:46',message:'API Asset Resolution',data:{sendAssetId:sendAsset?.id,receiveAssetId:receiveAsset?.id,bodySendAsset:body.send_asset,bodyReceiveAsset:body.receive_asset},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-      // #endregion
-
       if (!sendAsset || !receiveAsset) {
         return NextResponse.json(
           { error: 'Invalid asset IDs' },
@@ -63,52 +56,44 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Fetch real limits from NOWPayments API
+      // Fetch real limits from NOWPayments API (required so we validate before calling createPayment)
+      const isFixedRate = body.rate_type === 'fixed';
+      let limits: { min_amount: number; max_amount?: number };
       try {
-        const isFixedRate = body.rate_type === 'fixed';
-        
-        // #region agent log
-        fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payment/route.ts:58',message:'API Fetching Limits',data:{sendAssetId:sendAsset.id,receiveAssetId:receiveAsset.id,isFixedRate,rateTypeFromBody:body.rate_type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
-        
-        const limits = await getExchangeLimits(sendAsset.id, receiveAsset.id, isFixedRate);
-
-        // #region agent log
-        fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payment/route.ts:60',message:'API Limits Fetched',data:{minAmount:limits.min_amount,maxAmount:limits.max_amount,sendAmount,comparison:sendAmount<limits.min_amount},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
-
-        // Validate against min amount
-        if (sendAmount < limits.min_amount) {
-          // #region agent log
-          fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'payment/route.ts:62',message:'API Min Validation Failed',data:{sendAmount,minAmount:limits.min_amount,difference:sendAmount-limits.min_amount,priceAmount:body.price_amount,expectedReceive:body.expected_receive},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-          // #endregion
-          
-          return NextResponse.json(
-            {
-              error: `Amount is below minimum. Minimum amount is ${limits.min_amount} ${sendAsset.symbol.toUpperCase()}`,
-              min_amount: limits.min_amount,
-              currency: sendAsset.symbol.toUpperCase(),
-            },
-            { status: 400 }
-          );
-        }
-
-        // Validate against max amount (if provided by API)
-        if (limits.max_amount && sendAmount > limits.max_amount) {
-          return NextResponse.json(
-            {
-              error: `Amount exceeds maximum. Maximum amount is ${limits.max_amount} ${sendAsset.symbol.toUpperCase()}`,
-              max_amount: limits.max_amount,
-              currency: sendAsset.symbol.toUpperCase(),
-            },
-            { status: 400 }
-          );
-        }
+        limits = await getExchangeLimits(sendAsset.id, receiveAsset.id, isFixedRate);
       } catch (limitsError: any) {
-        // If limits API fails, log but don't block the order
-        // NOWPayments will reject it anyway if amount is invalid
-        console.warn('Failed to fetch exchange limits, proceeding with order creation:', limitsError.message);
-        // Continue - NOWPayments will validate on their end
+        console.warn('Failed to fetch exchange limits:', limitsError.message);
+        return NextResponse.json(
+          {
+            error: 'Unable to verify minimum amount for this pair. Please try again in a moment.',
+            code: 'LIMITS_UNAVAILABLE',
+          },
+          { status: 503 }
+        );
+      }
+
+      // Validate against min amount
+      if (sendAmount < limits.min_amount) {
+        return NextResponse.json(
+          {
+            error: `Amount is below minimum. Minimum amount is ${limits.min_amount} ${sendAsset.symbol.toUpperCase()}`,
+            min_amount: limits.min_amount,
+            currency: sendAsset.symbol.toUpperCase(),
+          },
+          { status: 400 }
+        );
+      }
+
+      // Validate against max amount (if provided by API)
+      if (limits.max_amount != null && sendAmount > limits.max_amount) {
+        return NextResponse.json(
+          {
+            error: `Amount exceeds maximum. Maximum amount is ${limits.max_amount} ${sendAsset.symbol.toUpperCase()}`,
+            max_amount: limits.max_amount,
+            currency: sendAsset.symbol.toUpperCase(),
+          },
+          { status: 400 }
+        );
       }
 
       // Get current payment mode (LIVE or SANDBOX)
@@ -127,34 +112,33 @@ export async function POST(request: NextRequest) {
       // Sandbox-specific: add case parameter from environment variable (ONLY in sandbox mode)
       let resolvedSandboxCase: SandboxCase | undefined;
       if (currentPaymentMode === 'sandbox') {
-        resolvedSandboxCase = getSandboxCaseFromEnv();
+        resolvedSandboxCase = await getSandboxCase();
         paymentParams.case = resolvedSandboxCase;
       }
 
-      // CRITICAL: IPN callback URL MUST use PUBLIC_BASE_URL (no fallbacks, no localhost)
-      // This is the ONLY source of truth for webhook URLs
-      const publicBaseUrl = process.env.PUBLIC_BASE_URL;
-      
+      // CRITICAL: IPN callback URL from centralized env (validated at startup)
+      const publicBaseUrl = getPublicBaseUrl();
       if (!publicBaseUrl) {
-        console.error('🔴 CRITICAL: PUBLIC_BASE_URL environment variable is missing');
-        throw new Error('PUBLIC_BASE_URL environment variable is required. Set it to your public ngrok URL (e.g., https://abc123.ngrok-free.app)');
+        console.error('🔴 CRITICAL: PUBLIC_BASE_URL is not set');
+        throw new Error(
+          'PUBLIC_BASE_URL is required. Set it in your environment (e.g. deployment env vars).'
+        );
       }
-      
-      if (publicBaseUrl.includes('localhost') || publicBaseUrl.includes('127.0.0.1')) {
+      if (
+        publicBaseUrl.includes('localhost') ||
+        publicBaseUrl.includes('127.0.0.1')
+      ) {
         console.error('🔴 CRITICAL: PUBLIC_BASE_URL contains localhost:', publicBaseUrl);
-        throw new Error('PUBLIC_BASE_URL cannot contain localhost. It must be a publicly accessible URL (e.g., ngrok URL)');
+        throw new Error(
+          'PUBLIC_BASE_URL cannot be localhost in production. Use a publicly accessible URL.'
+        );
       }
-      
-      // Build IPN callback URL - NEVER allow frontend to override this
       const ipnCallbackUrl = `${publicBaseUrl}/api/webhook/nowpayments`;
       paymentParams.ipn_callback_url = ipnCallbackUrl;
-      
-      // CRITICAL LOG: Always log the final callback URL used
       console.log('🔥 IPN CALLBACK URL USED:', ipnCallbackUrl);
 
       const payment = await createPayment(paymentParams);
 
-      // Get authenticated user ID (null for anonymous orders)
       const authUser = await getAuthUser();
       const userId = authUser ? authUser.userId : null;
 
@@ -169,35 +153,40 @@ export async function POST(request: NextRequest) {
         // For now, just store the rate
       }
 
-      // Save order to database (NON-NEGOTIABLE: Database is source of truth)
+      // Save order + status history in one DB transaction (no payment without order)
+      const orderData = {
+        orderId: body.order_id || payment.order_id,
+        paymentId: payment.payment_id,
+        paymentMode: currentPaymentMode,
+        sandboxCase: resolvedSandboxCase,
+        internalStatus: 'NEW' as const,
+        fromCurrency: body.send_asset.toUpperCase(),
+        fromAmount: sendAmount,
+        toCurrency: body.receive_asset.toUpperCase(),
+        toAmount: expectedReceive,
+        rateTimestamp: new Date().toISOString(),
+        ...(payment.purchase_id && { purchaseId: payment.purchase_id }),
+        ...(body.send_network && { fromNetwork: body.send_network }),
+        ...(payment.pay_address && { fromAddress: payment.pay_address }),
+        ...(body.receive_network && { toNetwork: body.receive_network }),
+        ...(body.destination && { toAddress: body.destination }),
+        ...(providerRate !== undefined && { providerRate }),
+        ...(expectedReceive !== undefined && { expectedReceive }),
+        ...(rateDeviationPercent !== undefined && { rateDeviationPercent }),
+      };
       try {
-        // Build order data, omitting undefined fields (TypeScript convention)
-        const orderData = {
-          orderId: body.order_id || payment.order_id,
-          paymentId: payment.payment_id,
-          paymentMode: currentPaymentMode,
-          sandboxCase: resolvedSandboxCase,
-          internalStatus: 'NEW' as const,
-          fromCurrency: body.send_asset.toUpperCase(),
-          fromAmount: sendAmount,
-          toCurrency: body.receive_asset.toUpperCase(),
-          toAmount: expectedReceive,
-          rateTimestamp: new Date().toISOString(),
-          ...(payment.purchase_id && { purchaseId: payment.purchase_id }),
-          ...(body.send_network && { fromNetwork: body.send_network }),
-          ...(payment.pay_address && { fromAddress: payment.pay_address }),
-          ...(body.receive_network && { toNetwork: body.receive_network }),
-          ...(body.destination && { toAddress: body.destination }),
-          ...(providerRate !== undefined && { providerRate }),
-          ...(expectedReceive !== undefined && { expectedReceive }),
-          ...(rateDeviationPercent !== undefined && { rateDeviationPercent }),
-        };
-        await createOrder(userId, orderData);
+        await createOrderWithHistoryTransaction(userId, orderData);
       } catch (dbError: any) {
-        // Log error but don't fail the payment creation
-        // Order is still created in NOWPayments, but DB save failed
-        console.error('Failed to save order to database:', dbError);
-        // Continue - payment is still valid, just not tracked in our DB
+        // Orphan: payment exists in NOWPayments but no order in DB — do not return payment
+        console.error('Orphan payment: DB transaction failed', {
+          payment_id: payment.payment_id,
+          order_id: body.order_id || payment.order_id,
+          error: dbError?.message ?? dbError,
+        });
+        return NextResponse.json(
+          { error: 'Order could not be saved. Please try again.' },
+          { status: 500 }
+        );
       }
 
       // Add exchange-specific metadata
@@ -253,56 +242,63 @@ export async function POST(request: NextRequest) {
       // Sandbox-specific: add case parameter from environment variable (ONLY in sandbox mode)
       let resolvedSandboxCase: SandboxCase | undefined;
       if (currentPaymentMode === 'sandbox') {
-        resolvedSandboxCase = getSandboxCaseFromEnv();
+        resolvedSandboxCase = await getSandboxCase();
         paymentParams.case = resolvedSandboxCase;
       }
 
-      // CRITICAL: IPN callback URL MUST use PUBLIC_BASE_URL (no fallbacks, no localhost)
-      // This is the ONLY source of truth for webhook URLs
-      const publicBaseUrl = process.env.PUBLIC_BASE_URL;
-      
-      if (!publicBaseUrl) {
-        console.error('🔴 CRITICAL: PUBLIC_BASE_URL environment variable is missing');
-        throw new Error('PUBLIC_BASE_URL environment variable is required. Set it to your public ngrok URL (e.g., https://abc123.ngrok-free.app)');
+      // CRITICAL: IPN callback URL from centralized env (validated at startup)
+      const publicBaseUrlPayment = getPublicBaseUrl();
+      if (!publicBaseUrlPayment) {
+        console.error('🔴 CRITICAL: PUBLIC_BASE_URL is not set');
+        throw new Error(
+          'PUBLIC_BASE_URL is required. Set it in your environment (e.g. deployment env vars).'
+        );
       }
-      
-      if (publicBaseUrl.includes('localhost') || publicBaseUrl.includes('127.0.0.1')) {
-        console.error('🔴 CRITICAL: PUBLIC_BASE_URL contains localhost:', publicBaseUrl);
-        throw new Error('PUBLIC_BASE_URL cannot contain localhost. It must be a publicly accessible URL (e.g., ngrok URL)');
+      if (
+        publicBaseUrlPayment.includes('localhost') ||
+        publicBaseUrlPayment.includes('127.0.0.1')
+      ) {
+        console.error('🔴 CRITICAL: PUBLIC_BASE_URL contains localhost:', publicBaseUrlPayment);
+        throw new Error(
+          'PUBLIC_BASE_URL cannot be localhost in production. Use a publicly accessible URL.'
+        );
       }
-      
-      // Build IPN callback URL - NEVER allow frontend to override this
-      const ipnCallbackUrl = `${publicBaseUrl}/api/webhook/nowpayments`;
-      paymentParams.ipn_callback_url = ipnCallbackUrl;
-      
-      // CRITICAL LOG: Always log the final callback URL used
-      console.log('🔥 IPN CALLBACK URL USED:', ipnCallbackUrl);
+      const ipnCallbackUrlPayment = `${publicBaseUrlPayment}/api/webhook/nowpayments`;
+      paymentParams.ipn_callback_url = ipnCallbackUrlPayment;
+      console.log('🔥 IPN CALLBACK URL USED:', ipnCallbackUrlPayment);
 
       const payment = await createPayment(paymentParams);
 
-      // Get authenticated user ID (null for anonymous orders)
       const authUser = await getAuthUser();
       const userId = authUser ? authUser.userId : null;
 
-      // Save order to database (NON-NEGOTIABLE: Database is source of truth)
+      // Save order + status history in one DB transaction (no payment without order)
+      const orderDataPayment = {
+        orderId: body.order_id || payment.order_id,
+        paymentId: payment.payment_id,
+        paymentMode: currentPaymentMode,
+        sandboxCase: resolvedSandboxCase,
+        internalStatus: 'NEW' as const,
+        fromCurrency: payCurrency.toUpperCase(),
+        fromAmount: parseFloat(body.expected_amount || '0'),
+        toCurrency: payCurrency.toUpperCase(),
+        toAmount: parseFloat(body.expected_amount || '0'),
+        ...(payment.purchase_id && { purchaseId: payment.purchase_id }),
+        ...(payment.pay_address && { fromAddress: payment.pay_address }),
+      };
       try {
-        const orderData = {
-          orderId: body.order_id || payment.order_id,
-          paymentId: payment.payment_id,
-          paymentMode: currentPaymentMode,
-          sandboxCase: resolvedSandboxCase, // Save resolved sandbox case from env variable
-          internalStatus: 'NEW' as const, // New order starts at NEW
-          fromCurrency: payCurrency.toUpperCase(),
-          fromAmount: parseFloat(body.expected_amount || '0'),
-          toCurrency: payCurrency.toUpperCase(), // Payment orders: same currency
-          toAmount: parseFloat(body.expected_amount || '0'),
-          ...(payment.purchase_id && { purchaseId: payment.purchase_id }),
-          ...(payment.pay_address && { fromAddress: payment.pay_address }),
-        };
-        await createOrder(userId, orderData);
+        await createOrderWithHistoryTransaction(userId, orderDataPayment);
       } catch (dbError: any) {
-        console.error('Failed to save order to database:', dbError);
-        // Continue - payment is still valid
+        // Orphan: payment exists in NOWPayments but no order in DB — do not return payment
+        console.error('Orphan payment: DB transaction failed', {
+          payment_id: payment.payment_id,
+          order_id: body.order_id || payment.order_id,
+          error: dbError?.message ?? dbError,
+        });
+        return NextResponse.json(
+          { error: 'Order could not be saved. Please try again.' },
+          { status: 500 }
+        );
       }
 
       const paymentOrder = {
@@ -328,7 +324,10 @@ export async function POST(request: NextRequest) {
     // Check if it's an API key error
     if (errorMessage.includes('API key') || errorMessage.includes('not configured')) {
       return NextResponse.json(
-        { error: 'API key not configured. Please check your .env.local file.' },
+        {
+          error:
+            'Payment API is not configured. Set NOWPAYMENTS_API_KEY (or LIVE/SANDBOX keys) in your environment.',
+        },
         { status: 500 }
       );
     }
@@ -343,9 +342,20 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // NOWPayments: amount below minimum for this currency
+    if (errorMessage.includes('less than minimal') || errorMessage.includes('AMOUNT_MINIMAL_ERROR')) {
+      return NextResponse.json(
+        {
+          error: 'Amount is below the minimum for this currency. Please increase the amount and try again.',
+          code: 'AMOUNT_MINIMAL_ERROR',
+        },
+        { status: 400 }
+      );
+    }
     
     return NextResponse.json(
-      { error: errorMessage },
+      { error: 'Something went wrong. Please try again.' },
       { status: 500 }
     );
   }

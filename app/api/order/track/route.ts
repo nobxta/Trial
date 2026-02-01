@@ -79,10 +79,10 @@ export async function POST(request: NextRequest) {
         timeline: getTimelineFromStatus(payment?.payment_status || order.status)
       }
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Track order error:', error);
     return NextResponse.json(
-      { success: false, error: 'INTERNAL_ERROR', message: error.message },
+      { success: false, error: 'Something went wrong. Please try again.' },
       { status: 500 }
     );
   }

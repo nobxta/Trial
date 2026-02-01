@@ -1,4 +1,5 @@
 import { supabaseAdmin } from './supabase';
+import { DbError, wrapDbError, isNotFoundError, isUniqueViolation } from './db-errors';
 import {
   getUserFacingStatus,
   getCurrentStep,
@@ -129,8 +130,7 @@ export async function getUserOrders(
   const { data, error } = await query;
 
   if (error) {
-    console.error('Database error fetching orders:', error);
-    return [];
+    throw wrapDbError(error, 'getUserOrders');
   }
 
   if (!data) {
@@ -150,7 +150,11 @@ export async function getOrderById(orderId: string, userId: string): Promise<Ord
     .eq('user_id', userId)
     .single();
 
-  if (error || !data) return null;
+  if (error) {
+    if (isNotFoundError(error.code)) return null;
+    throw wrapDbError(error, 'getOrderById');
+  }
+  if (!data) return null;
 
   return mapOrderRow(data);
 }
@@ -165,7 +169,11 @@ export async function getOrderByOrderId(orderId: string): Promise<Order | null> 
     .eq('order_id', orderId)
     .single();
 
-  if (error || !data) return null;
+  if (error) {
+    if (isNotFoundError(error.code)) return null;
+    throw wrapDbError(error, 'getOrderByOrderId');
+  }
+  if (!data) return null;
 
   return mapOrderRow(data);
 }
@@ -232,10 +240,148 @@ export async function createOrder(userId: string | null, orderData: {
     .single();
 
   if (error) {
-    throw new Error(`Failed to create order: ${error.message}`);
+    throw wrapDbError(error, 'createOrder');
   }
 
   return mapOrderRow(data);
+}
+
+/**
+ * Create order and initial status history in a single DB transaction (RPC).
+ * Use from payment route so that either both succeed or both fail—no orphan payments.
+ * Throws if the transaction fails.
+ */
+export async function createOrderWithHistoryTransaction(
+  userId: string | null,
+  orderData: {
+    orderId: string;
+    paymentId?: string;
+    purchaseId?: string;
+    paymentMode?: 'live' | 'sandbox';
+    sandboxCase?: 'success' | 'failed' | 'expired' | 'partially_paid';
+    internalStatus?: InternalStatus;
+    fromCurrency: string;
+    fromAmount: number;
+    fromNetwork?: string;
+    fromAddress?: string;
+    toCurrency: string;
+    toAmount: number;
+    toNetwork?: string;
+    toAddress?: string;
+    providerRate?: number;
+    expectedReceive?: number;
+    rateTimestamp?: string;
+    rateDeviationPercent?: number;
+  }
+): Promise<Order> {
+  checkSupabase();
+
+  const internalStatus: InternalStatus = orderData.internalStatus || 'NEW';
+  const userStatus = getUserFacingStatus(internalStatus);
+
+  const toStr = (v: string | undefined) => (v != null ? String(v) : null);
+  const p_order = {
+    user_id: userId ?? null,
+    order_id: orderData.orderId,
+    payment_id: toStr(orderData.paymentId ?? undefined),
+    purchase_id: toStr(orderData.purchaseId ?? undefined),
+    payment_mode: toStr(orderData.paymentMode ?? undefined),
+    sandbox_case: toStr(orderData.sandboxCase ?? undefined),
+    internal_status: internalStatus,
+    user_status: userStatus,
+    status: internalStatus,
+    status_source: 'system',
+    from_currency: orderData.fromCurrency,
+    from_amount: orderData.fromAmount,
+    from_network: toStr(orderData.fromNetwork ?? undefined),
+    from_address: toStr(orderData.fromAddress ?? undefined),
+    to_currency: orderData.toCurrency,
+    to_amount: orderData.toAmount,
+    to_network: toStr(orderData.toNetwork ?? undefined),
+    to_address: toStr(orderData.toAddress ?? undefined),
+    provider_rate: orderData.providerRate ?? null,
+    expected_receive: orderData.expectedReceive ?? null,
+    rate_timestamp: orderData.rateTimestamp ?? null,
+    rate_deviation_percent: orderData.rateDeviationPercent ?? null,
+  };
+
+  const { data, error } = await supabaseAdmin!.rpc('create_order_with_history', {
+    p_order: p_order,
+  });
+
+  if (error) {
+    throw wrapDbError(error, 'createOrderWithHistoryTransaction');
+  }
+
+  if (!data) {
+    throw new DbError('Create order transaction returned no row', { context: 'createOrderWithHistoryTransaction' });
+  }
+
+  return mapOrderRow(data);
+}
+
+/**
+ * Find orders stuck in NEW, AWAITING_DEPOSIT, or CONFIRMING for longer than the given minutes.
+ * Used by webhook failure recovery (cron) to poll NOWPayments and reconcile.
+ * AWAITING_DEPOSIT included so orders that received only "waiting" and then missed later webhooks are reconciled.
+ */
+export async function findStaleOrders(options: {
+  olderThanMinutes: number;
+  limit?: number;
+}): Promise<Order[]> {
+  checkSupabase();
+
+  const limit = Math.min(options.limit ?? 50, 100);
+  const cutoff = new Date(Date.now() - options.olderThanMinutes * 60 * 1000);
+  const cutoffIso = cutoff.toISOString();
+
+  const { data, error } = await supabaseAdmin!
+    .from('orders')
+    .select('*')
+    .in('internal_status', ['NEW', 'AWAITING_DEPOSIT', 'CONFIRMING'])
+    .not('payment_id', 'is', null)
+    .lt('updated_at', cutoffIso)
+    .order('updated_at', { ascending: true })
+    .limit(limit);
+
+  if (error) {
+    throw wrapDbError(error, 'findStaleOrders');
+  }
+
+  return (data ?? []).map(mapOrderRow);
+}
+
+/** Paid-but-not-DONE statuses: payment confirmed by provider but order not yet DONE. */
+const PAID_NOT_DONE_STATUSES = ['PAYMENT_CONFIRMED', 'MANUAL_REVIEW', 'PROCESSING_BY_PROVIDER'] as const;
+
+/**
+ * Find orders stuck in PAYMENT_CONFIRMED, MANUAL_REVIEW, or PROCESSING_BY_PROVIDER for longer than the given minutes.
+ * Used by reconciliation to poll provider and set DONE when provider says finished (funds-release guarantee).
+ */
+export async function findStalePaidOrders(options: {
+  olderThanMinutes: number;
+  limit?: number;
+}): Promise<Order[]> {
+  checkSupabase();
+
+  const limit = Math.min(options.limit ?? 50, 100);
+  const cutoff = new Date(Date.now() - options.olderThanMinutes * 60 * 1000);
+  const cutoffIso = cutoff.toISOString();
+
+  const { data, error } = await supabaseAdmin!
+    .from('orders')
+    .select('*')
+    .in('internal_status', [...PAID_NOT_DONE_STATUSES])
+    .not('payment_id', 'is', null)
+    .lt('updated_at', cutoffIso)
+    .order('updated_at', { ascending: true })
+    .limit(limit);
+
+  if (error) {
+    throw wrapDbError(error, 'findStalePaidOrders');
+  }
+
+  return (data ?? []).map(mapOrderRow);
 }
 
 // Get order by payment_id (needed for webhook processing)
@@ -248,7 +394,11 @@ export async function getOrderByPaymentId(paymentId: string): Promise<Order | nu
     .eq('payment_id', paymentId)
     .single();
 
-  if (error || !data) return null;
+  if (error) {
+    if (isNotFoundError(error.code)) return null;
+    throw wrapDbError(error, 'getOrderByPaymentId');
+  }
+  if (!data) return null;
 
   return mapOrderRow(data);
 }
@@ -271,9 +421,7 @@ export async function checkWebhookIdempotency(
     .maybeSingle();
 
   if (error) {
-    console.error('Failed to check webhook idempotency:', error);
-    // On error, assume not processed to allow retry (fail open)
-    return false;
+    throw wrapDbError(error, 'checkWebhookIdempotency');
   }
 
   return !!data;
@@ -299,15 +447,65 @@ export async function recordWebhookIdempotency(
     });
 
   if (error) {
-    // If unique constraint violation, webhook was already processed
-    if (error.code === '23505') {
-      return false; // Already exists
+    if (isUniqueViolation(error.code)) {
+      return false; // Already exists (business result, not failure)
     }
-    console.error('Failed to record webhook idempotency:', error);
-    return false;
+    throw wrapDbError(error, 'recordWebhookIdempotency');
   }
 
   return true;
+}
+
+/**
+ * Atomic webhook processing: idempotency + order update + history in one DB transaction.
+ * Use from webhook route to ensure all three succeed or fail together; prevents double-processing on retry.
+ *
+ * Returns { alreadyProcessed: true } if this (payment_id, payment_status) was already handled.
+ * Returns { alreadyProcessed: false, order } on success. Throws on DB/transaction failure.
+ */
+export async function processWebhookStatusUpdateAtomic(params: {
+  paymentId: string;
+  paymentStatus: string;
+  orderId: string;
+  internalStatus: InternalStatus;
+  userStatus: string;
+  providerStatus?: string;
+  statusSource?: string;
+  fromAddress?: string;
+  payinHash?: string;
+  payoutHash?: string;
+}): Promise<{ alreadyProcessed: true } | { alreadyProcessed: false; order: Order }> {
+  checkSupabase();
+
+  const p_params = {
+    payment_id: params.paymentId,
+    payment_status: params.paymentStatus,
+    order_id: params.orderId,
+    internal_status: params.internalStatus,
+    user_status: params.userStatus,
+    status_source: params.statusSource ?? 'webhook',
+    provider_status: params.providerStatus ?? null,
+    from_address: params.fromAddress ?? null,
+    payin_hash: params.payinHash ?? null,
+    payout_hash: params.payoutHash ?? null,
+  };
+
+  const { data, error } = await supabaseAdmin!
+    .rpc('process_webhook_status_update', { p_params });
+
+  if (error) {
+    throw wrapDbError(error, 'processWebhookStatusUpdateAtomic');
+  }
+
+  if (data?.already_processed === true) {
+    return { alreadyProcessed: true };
+  }
+
+  if (data?.order) {
+    return { alreadyProcessed: false, order: mapOrderRow(data.order) };
+  }
+
+  throw new Error('process_webhook_status_update returned unexpected result');
 }
 
 /**
@@ -342,8 +540,7 @@ async function addOrderStatusHistory(
     .insert(historyData);
 
   if (error) {
-    // Log but don't fail the update if history recording fails
-    console.error('Failed to record order status history:', error);
+    throw wrapDbError(error, 'addOrderStatusHistory');
   }
 }
 
@@ -374,10 +571,11 @@ export async function updateOrderStatus(
     .eq('order_id', orderId)
     .single();
 
-  if (fetchError || !currentOrder) {
-    console.error('🔴 [updateOrderStatus] Failed to fetch current order status:', fetchError);
-    return null;
+  if (fetchError) {
+    if (isNotFoundError(fetchError.code)) return null;
+    throw wrapDbError(fetchError, 'updateOrderStatus(fetch)');
   }
+  if (!currentOrder) return null;
 
   // Use internal_status if available, fallback to legacy status
   const currentInternalStatus = (currentOrder.internal_status || currentOrder.status) as InternalStatus;
@@ -399,23 +597,28 @@ export async function updateOrderStatus(
   } else {
     // Non-webhook updates: Apply state machine rules and admin protection
     
-    // CRITICAL: Prevent non-webhook updates from overriding admin decisions
-    // If status was set by admin, only admin can change it (unless it's a final state)
+    // CRITICAL: Prevent non-admin updates from overriding admin decisions
+    // If status was set by admin, only another admin action can change it (e.g. mark_completed)
     const finalStates: InternalStatus[] = ['DONE', 'FAILED', 'EXPIRED'];
     const isFinalState = finalStates.includes(currentInternalStatus);
     const isAdminDecision = currentStatusSource === 'admin' && !isFinalState;
+    const isCurrentUpdateFromAdmin = options?.source === 'admin';
 
-    if (isAdminDecision) {
+    if (isAdminDecision && !isCurrentUpdateFromAdmin) {
       console.warn(
-        `⚠️  [updateOrderStatus] Admin override protection: Order ${orderId} status was set by admin (${currentInternalStatus}). Update blocked to preserve admin decision.`
+        `⚠️  [updateOrderStatus] Admin override protection: Order ${orderId} status was set by admin (${currentInternalStatus}). Update blocked (source: ${options?.source}).`
       );
       // Return current order to indicate "no change" (not an error)
-      const { data: existingOrder } = await supabaseAdmin!
+      const { data: existingOrder, error: fetchErr } = await supabaseAdmin!
         .from('orders')
         .select('*')
         .eq('order_id', orderId)
         .single();
       
+      if (fetchErr) {
+        if (isNotFoundError(fetchErr.code)) return null;
+        throw wrapDbError(fetchErr, 'updateOrderStatus(admin-protection fetch)');
+      }
       if (!existingOrder) return null;
       
       return mapOrderRow(existingOrder);
@@ -433,12 +636,16 @@ export async function updateOrderStatus(
           `🚫 [updateOrderStatus] Invalid status transition blocked: Order ${orderId} cannot transition from ${currentInternalStatus} to ${internalStatus} (source: ${source})`
         );
         // Return current order instead of null to indicate "no change" (not an error)
-        const { data: existingOrder } = await supabaseAdmin!
+        const { data: existingOrder, error: fetchErr } = await supabaseAdmin!
           .from('orders')
           .select('*')
           .eq('order_id', orderId)
           .single();
         
+        if (fetchErr) {
+          if (isNotFoundError(fetchErr.code)) return null;
+          throw wrapDbError(fetchErr, 'updateOrderStatus(transition fetch)');
+        }
         if (!existingOrder) return null;
         
         return mapOrderRow(existingOrder);
@@ -497,15 +704,11 @@ export async function updateOrderStatus(
     .single();
 
   if (error) {
-    console.error('🔴 [updateOrderStatus] Database update error:', error);
-    console.error('🔴 [updateOrderStatus] Error details:', JSON.stringify(error, null, 2));
-    return null;
+    if (isNotFoundError(error.code)) return null;
+    throw wrapDbError(error, 'updateOrderStatus(update)');
   }
 
-  if (!data) {
-    console.error('🔴 [updateOrderStatus] Database update returned no data');
-    return null;
-  }
+  if (!data) return null;
 
   console.log('✅ [updateOrderStatus] Database update successful');
   console.log('🔵 [updateOrderStatus] Updated order internal_status:', data.internal_status);

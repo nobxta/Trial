@@ -1,7 +1,70 @@
 // NOWPayments API client
-// Uses getNowPaymentsConfig() to automatically switch between LIVE and SANDBOX modes
+// Uses getNowPaymentsConfig() and centralized env for credentials (no direct process.env for secrets)
+// Request timeouts and retry with exponential backoff for GET only (no retry on POST to avoid duplicate payments).
 
 import { getNowPaymentsConfig, getNowPaymentsConfigSync } from './nowpayments-config';
+import {
+  getNowPaymentsLiveApiKey,
+  getNowPaymentsSandboxApiKey,
+  getNowPaymentsApiUrl,
+  isProductionEnv,
+} from './env';
+
+/** Timeout for POST (createPayment). No retry to avoid duplicate payments. */
+const NOWPAYMENTS_POST_TIMEOUT_MS = 30_000;
+/** Timeout for GET requests. */
+const NOWPAYMENTS_GET_TIMEOUT_MS = 15_000;
+/** Max retries for GET (idempotent). Exponential backoff delays in ms. */
+const NOWPAYMENTS_GET_RETRY_DELAYS_MS = [1_000, 2_000, 4_000];
+
+function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, {
+    ...init,
+    signal: init.signal ?? controller.signal,
+  }).finally(() => clearTimeout(timeoutId));
+}
+
+/**
+ * Fetch with timeout and retry (GET only). Retries on timeout, 5xx, or network error.
+ * Does NOT retry on 4xx (client error). Used for idempotent GET to avoid duplicate side effects.
+ */
+async function fetchGetWithRetry(
+  url: string,
+  headers: HeadersInit,
+  timeoutMs: number = NOWPAYMENTS_GET_TIMEOUT_MS
+): Promise<Response> {
+  const delays = NOWPAYMENTS_GET_RETRY_DELAYS_MS;
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    try {
+      const res = await fetchWithTimeout(url, { method: 'GET', headers }, timeoutMs);
+      if (res.ok || res.status < 500) return res;
+      lastError = new Error(`NOWPayments API ${res.status}: ${await res.text()}`);
+      if (attempt < delays.length) {
+        await new Promise((r) => setTimeout(r, delays[attempt]));
+      } else {
+        throw lastError;
+      }
+    } catch (e: any) {
+      lastError = e;
+      const isRetryable =
+        e?.name === 'AbortError' ||
+        e?.code === 'ECONNRESET' ||
+        e?.code === 'ETIMEDOUT' ||
+        e?.code === 'ECONNREFUSED' ||
+        (typeof e?.message === 'string' && e.message.includes('fetch'));
+      if (!isRetryable || attempt >= delays.length) throw e;
+      await new Promise((r) => setTimeout(r, delays[attempt]));
+    }
+  }
+  throw lastError;
+}
 
 interface PaymentRequest {
   price_amount: number;
@@ -74,14 +137,18 @@ export async function createPayment(params: PaymentRequest): Promise<PaymentResp
     payload.case = params.case;
   }
 
-  const response = await fetch(`${config.baseUrl}/payment`, {
-    method: 'POST',
-    headers: {
-      'x-api-key': config.apiKey,
-      'Content-Type': 'application/json',
+  const response = await fetchWithTimeout(
+    `${config.baseUrl}/payment`,
+    {
+      method: 'POST',
+      headers: {
+        'x-api-key': config.apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
     },
-    body: JSON.stringify(payload),
-  });
+    NOWPAYMENTS_POST_TIMEOUT_MS
+  );
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -95,13 +162,9 @@ export async function createPayment(params: PaymentRequest): Promise<PaymentResp
     } catch {
       errorMessage = errorText || errorMessage;
     }
-    
-    // #region agent log
-    fetch('http://127.0.0.1:7246/ingest/66ee821c-d601-4539-8e2a-0508b8f23f7e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'nowpayments.ts:86',message:'NOWPayments createPayment error',data:{status:response.status,errorMessage,errorDetails,payload:JSON.stringify(payload),price_amount:payload.price_amount,pay_currency:payload.pay_currency},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-    // #endregion
-    
+
     // Log detailed error in development
-    if (typeof window === 'undefined' && process.env.NODE_ENV === 'development') {
+    if (typeof window === 'undefined' && !isProductionEnv()) {
       console.error('NOWPayments payment API error:', {
         status: response.status,
         statusText: response.statusText,
@@ -128,35 +191,41 @@ export async function createPayment(params: PaymentRequest): Promise<PaymentResp
 // For now, we use the current payment mode (which may not match if mode was changed)
 export async function getPaymentStatus(paymentId: string, mode?: 'live' | 'sandbox'): Promise<PaymentResponse> {
   let config;
-  
+
   if (mode) {
-    // Use provided mode (from order record)
     if (mode === 'sandbox') {
-      const apiKey = process.env.NOWPAYMENTS_API_KEY_SANDBOX || '';
-      const baseUrl = 'https://api-sandbox.nowpayments.io/v1';
+      const apiKey = getNowPaymentsSandboxApiKey();
       if (!apiKey) {
-        throw new Error('NOWPAYMENTS_API_KEY_SANDBOX is required for sandbox mode');
+        throw new Error(
+          'NOWPAYMENTS_API_KEY_SANDBOX is required for sandbox mode. Set it in your environment.'
+        );
       }
-      config = { apiKey, baseUrl, mode: 'sandbox' as const };
+      config = {
+        apiKey,
+        baseUrl: 'https://api-sandbox.nowpayments.io/v1',
+        mode: 'sandbox' as const,
+      };
     } else {
-      const apiKey = process.env.NOWPAYMENTS_API_KEY_LIVE || process.env.NOWPAYMENTS_API_KEY || '';
-      const baseUrl = process.env.NOWPAYMENTS_API_URL || 'https://api.nowpayments.io/v1';
+      const apiKey = getNowPaymentsLiveApiKey();
       if (!apiKey) {
-        throw new Error('NOWPAYMENTS_API_KEY_LIVE is required for live mode');
+        throw new Error(
+          'NOWPAYMENTS_API_KEY or NOWPAYMENTS_API_KEY_LIVE is required for live mode. Set it in your environment.'
+        );
       }
-      config = { apiKey, baseUrl, mode: 'live' as const };
+      config = {
+        apiKey,
+        baseUrl: getNowPaymentsApiUrl(),
+        mode: 'live' as const,
+      };
     }
   } else {
-    // Use current payment mode (fallback)
     config = await getNowPaymentsConfig();
   }
 
-  const response = await fetch(`${config.baseUrl}/payment/${paymentId}`, {
-    method: 'GET',
-    headers: {
-      'x-api-key': config.apiKey,
-    },
-  });
+  const response = await fetchGetWithRetry(
+    `${config.baseUrl}/payment/${paymentId}`,
+    { 'x-api-key': config.apiKey }
+  );
 
   if (!response.ok) {
     const error = await response.text();
@@ -174,10 +243,10 @@ export async function getAvailableCurrencies(): Promise<string[]> {
       'x-api-key': config.apiKey,
     };
 
-    const response = await fetch(`${config.baseUrl}/currencies`, {
-      method: 'GET',
-      headers,
-    });
+    const response = await fetchGetWithRetry(
+      `${config.baseUrl}/currencies`,
+      headers
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -190,7 +259,7 @@ export async function getAvailableCurrencies(): Promise<string[]> {
       }
       
       // Log detailed error in development
-      if (typeof window === 'undefined' && process.env.NODE_ENV === 'development') {
+      if (typeof window === 'undefined' && !isProductionEnv()) {
         console.error('NOWPayments currencies API error:', {
           status: response.status,
           statusText: response.statusText,
@@ -218,14 +287,9 @@ export async function getEstimatedPrice(
 ): Promise<number> {
   const config = await getNowPaymentsConfig();
   
-  const response = await fetch(
+  const response = await fetchGetWithRetry(
     `${config.baseUrl}/estimate?amount=${amount}&currency_from=${fromCurrency}&currency_to=${toCurrency}`,
-    {
-      method: 'GET',
-      headers: {
-        'x-api-key': config.apiKey,
-      },
-    }
+    { 'x-api-key': config.apiKey }
   );
 
   if (!response.ok) {
@@ -274,12 +338,10 @@ export async function getExchangeLimits(
       is_fixed_rate: isFixedRate.toString(),
     });
 
-    const response = await fetch(`${config.baseUrl}/min-amount?${params.toString()}`, {
-      method: 'GET',
-      headers: {
-        'x-api-key': config.apiKey,
-      },
-    });
+    const response = await fetchGetWithRetry(
+      `${config.baseUrl}/min-amount?${params.toString()}`,
+      { 'x-api-key': config.apiKey }
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -293,7 +355,7 @@ export async function getExchangeLimits(
       }
 
       // Log detailed error in development
-      if (typeof window === 'undefined' && process.env.NODE_ENV === 'development') {
+      if (typeof window === 'undefined' && !isProductionEnv()) {
         console.error('NOWPayments min-amount API error:', {
           status: response.status,
           statusText: response.statusText,

@@ -1,4 +1,11 @@
 import { getPaymentMode } from './payment-mode';
+import {
+  getNowPaymentsLiveApiKey,
+  getNowPaymentsLiveIpnSecret,
+  getNowPaymentsSandboxApiKey,
+  getNowPaymentsSandboxIpnSecret,
+  getNowPaymentsApiUrl,
+} from './env';
 
 export type PaymentMode = 'live' | 'sandbox';
 
@@ -10,52 +17,39 @@ export interface NowPaymentsConfig {
 }
 
 /**
- * Get NOWPayments configuration based on current payment mode
- * This is the single source of truth for NOWPayments API configuration
- * 
- * Environment variables:
- * - LIVE: NOWPAYMENTS_API_KEY_LIVE, NOWPAYMENTS_IPN_SECRET_LIVE
- * - SANDBOX: NOWPAYMENTS_API_KEY_SANDBOX, NOWPAYMENTS_IPN_SECRET_SANDBOX
- * 
- * URLs:
- * - LIVE: https://api.nowpayments.io/v1
- * - SANDBOX: https://api-sandbox.nowpayments.io/v1
+ * Get NOWPayments configuration based on current payment mode.
+ * Uses centralized env (no defaults for secrets in production).
  */
 export async function getNowPaymentsConfig(): Promise<NowPaymentsConfig> {
   const mode = await getPaymentMode();
-  
+
   if (mode === 'sandbox') {
-    const apiKey = process.env.NOWPAYMENTS_API_KEY_SANDBOX || '';
-    const ipnSecret = process.env.NOWPAYMENTS_IPN_SECRET_SANDBOX || '';
-    const baseUrl = 'https://api-sandbox.nowpayments.io/v1';
-    
+    const apiKey = getNowPaymentsSandboxApiKey();
     if (!apiKey) {
-      throw new Error('NOWPAYMENTS_API_KEY_SANDBOX is required for sandbox mode. Set it in your .env.local file.');
+      throw new Error(
+        'NOWPAYMENTS_API_KEY_SANDBOX is required for sandbox mode. Set it in your environment.'
+      );
     }
-    
     return {
       apiKey,
-      baseUrl,
-      ipnSecret,
+      baseUrl: 'https://api-sandbox.nowpayments.io/v1',
+      ipnSecret: getNowPaymentsSandboxIpnSecret(),
       mode: 'sandbox',
     };
-  } else {
-    // Live mode (default)
-    const apiKey = process.env.NOWPAYMENTS_API_KEY_LIVE || process.env.NOWPAYMENTS_API_KEY || '';
-    const ipnSecret = process.env.NOWPAYMENTS_IPN_SECRET_LIVE || process.env.NOWPAYMENTS_IPN_SECRET || '';
-    const baseUrl = process.env.NOWPAYMENTS_API_URL || 'https://api.nowpayments.io/v1';
-    
-    if (!apiKey) {
-      throw new Error('NOWPAYMENTS_API_KEY_LIVE (or NOWPAYMENTS_API_KEY) is required for live mode. Set it in your .env.local file.');
-    }
-    
-    return {
-      apiKey,
-      baseUrl,
-      ipnSecret,
-      mode: 'live',
-    };
   }
+
+  const apiKey = getNowPaymentsLiveApiKey();
+  if (!apiKey) {
+    throw new Error(
+      'NOWPAYMENTS_API_KEY or NOWPAYMENTS_API_KEY_LIVE is required for live mode. Set it in your environment.'
+    );
+  }
+  return {
+    apiKey,
+    baseUrl: getNowPaymentsApiUrl(),
+    ipnSecret: getNowPaymentsLiveIpnSecret(),
+    mode: 'live',
+  };
 }
 
 /**
@@ -66,40 +60,35 @@ export async function getNowPaymentsConfig(): Promise<NowPaymentsConfig> {
 let cachedPaymentMode: PaymentMode | null = null;
 
 export function getNowPaymentsConfigSync(): NowPaymentsConfig {
-  // Try to use cached mode, default to live
   const mode = cachedPaymentMode || 'live';
-  
+
   if (mode === 'sandbox') {
-    const apiKey = process.env.NOWPAYMENTS_API_KEY_SANDBOX || '';
-    const ipnSecret = process.env.NOWPAYMENTS_IPN_SECRET_SANDBOX || '';
-    const baseUrl = 'https://api-sandbox.nowpayments.io/v1';
-    
+    const apiKey = getNowPaymentsSandboxApiKey();
     if (!apiKey) {
-      throw new Error('NOWPAYMENTS_API_KEY_SANDBOX is required for sandbox mode.');
+      throw new Error(
+        'NOWPAYMENTS_API_KEY_SANDBOX is required for sandbox mode. Set it in your environment.'
+      );
     }
-    
     return {
       apiKey,
-      baseUrl,
-      ipnSecret,
+      baseUrl: 'https://api-sandbox.nowpayments.io/v1',
+      ipnSecret: getNowPaymentsSandboxIpnSecret(),
       mode: 'sandbox',
     };
-  } else {
-    const apiKey = process.env.NOWPAYMENTS_API_KEY_LIVE || process.env.NOWPAYMENTS_API_KEY || '';
-    const ipnSecret = process.env.NOWPAYMENTS_IPN_SECRET_LIVE || process.env.NOWPAYMENTS_IPN_SECRET || '';
-    const baseUrl = process.env.NOWPAYMENTS_API_URL || 'https://api.nowpayments.io/v1';
-    
-    if (!apiKey) {
-      throw new Error('NOWPAYMENTS_API_KEY_LIVE (or NOWPAYMENTS_API_KEY) is required for live mode.');
-    }
-    
-    return {
-      apiKey,
-      baseUrl,
-      ipnSecret,
-      mode: 'live',
-    };
   }
+
+  const apiKey = getNowPaymentsLiveApiKey();
+  if (!apiKey) {
+    throw new Error(
+      'NOWPAYMENTS_API_KEY or NOWPAYMENTS_API_KEY_LIVE is required for live mode. Set it in your environment.'
+    );
+  }
+  return {
+    apiKey: apiKey,
+    baseUrl: getNowPaymentsApiUrl(),
+    ipnSecret: getNowPaymentsLiveIpnSecret(),
+    mode: 'live',
+  };
 }
 
 /**

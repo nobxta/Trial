@@ -2,21 +2,23 @@ import { NextRequest, NextResponse } from 'next/server';
 import { normalizeCurrency, fetchNowPaymentsCurrencies } from '@/scripts/fetch-and-normalize-currencies';
 import fs from 'fs';
 import path from 'path';
+import { getNowPaymentsLiveApiKey } from '@/lib/env';
 
 /**
  * API route to sync currencies from NOWPayments
  * POST /api/crypto/sync
- * 
- * This endpoint fetches currencies from NOWPayments API,
- * normalizes them, and saves to supportedCoins.json
+ *
+ * Uses centralized env for API key (no direct process.env for secrets).
  */
 export async function POST(request: NextRequest) {
   try {
-    // Check if API key is configured
-    const apiKey = process.env.NOWPAYMENTS_API_KEY || process.env.NEXT_PUBLIC_NOWPAYMENTS_API_KEY;
+    const apiKey = getNowPaymentsLiveApiKey();
     if (!apiKey) {
       return NextResponse.json(
-        { error: 'NOWPAYMENTS_API_KEY is not configured' },
+        {
+          error:
+            'Payment API is not configured. Set NOWPAYMENTS_API_KEY or NOWPAYMENTS_API_KEY_LIVE in your environment.',
+        },
         { status: 500 }
       );
     }

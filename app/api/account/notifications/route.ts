@@ -21,16 +21,9 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const success = await updateUserPreferences(authUser.userId, {
+    await updateUserPreferences(authUser.userId, {
       notificationsEnabled: enabled,
     });
-
-    if (!success) {
-      return NextResponse.json(
-        { success: false, error: 'Failed to update notifications preference' },
-        { status: 500 }
-      );
-    }
 
     return NextResponse.json({
       success: true,
@@ -39,7 +32,7 @@ export async function PATCH(request: NextRequest) {
   } catch (error) {
     console.error('Update notifications error:', error);
     return NextResponse.json(
-      { success: false, error: 'Internal server error' },
+      { success: false, error: 'Something went wrong. Please try again.' },
       { status: 500 }
     );
   }
