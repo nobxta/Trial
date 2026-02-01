@@ -39,17 +39,15 @@ const CATEGORY_TO_ENV_MAP: Record<EmailCategory, string> = {
  */
 export function getSenderEmail(category: EmailCategory): string {
   const envVarName = CATEGORY_TO_ENV_MAP[category];
-  const email = process.env[envVarName];
+  const email = process.env[envVarName]?.trim();
 
-  if (!email || email.trim() === '') {
-    throw new Error(
-      `Missing required environment variable: ${envVarName}. ` +
-      `This variable is required for ${category} category emails. ` +
-      `Please set it in your .env file.`
-    );
-  }
-
-  return email.trim();
+  if (email) return email;
+  // Fallback: use SMTP_USER so emails work with only SMTP_USER/SMTP_PASS set (e.g. on Vercel)
+  const smtpUser = process.env.SMTP_USER?.trim();
+  if (smtpUser) return smtpUser;
+  throw new Error(
+    `Set ${envVarName} or SMTP_USER for ${category} emails (e.g. in Vercel Environment Variables).`
+  );
 }
 
 /**

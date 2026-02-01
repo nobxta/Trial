@@ -1,5 +1,5 @@
 import { getUserWithPreferences } from './db';
-import { enqueueEmail } from './email';
+import { sendGenericEmail } from './email';
 import { getOrderStatusEmailTemplate } from './email-template';
 import { getEmailSetting } from './email-settings';
 import { tryClaimIdempotency } from './idempotency';
@@ -53,7 +53,7 @@ export async function sendNotification(
       }
     }
 
-    // Queue email (cron sends it; do not block webhook/response)
+    // Send email immediately via SMTP (no queue)
     if (notification.type === 'order_status' && notification.link) {
       const orderIdMatch = notification.title.match(/Order\s+([A-Z0-9-]+)\s+-/i);
       const orderId = orderIdMatch ? orderIdMatch[1] : 'N/A';
@@ -61,7 +61,8 @@ export async function sendNotification(
       const status = statusMatch ? statusMatch[1].trim() : 'unknown';
       const { text, html } = getOrderStatusEmailTemplate(orderId, status, notification.link);
       const emailSubject = `Order ${orderId} - Status Update`;
-      return enqueueEmail({ to: user.email, subject: emailSubject, html, text });
+      const ok = await sendGenericEmail(user.email, emailSubject, html, text, 'TRANSACTIONAL', request);
+      return ok;
     } else {
       const emailSubject = notification.title;
       const emailHtml = `
@@ -73,7 +74,7 @@ export async function sendNotification(
         </div>
       `;
       const emailText = `${notification.title}\n\n${notification.message}${notification.link ? `\n\nView details: ${notification.link}` : ''}\n\n— MintMove Team`;
-      return enqueueEmail({ to: user.email, subject: emailSubject, html: emailHtml, text: emailText });
+      return await sendGenericEmail(user.email, emailSubject, emailHtml, emailText, 'GENERIC', request);
     }
   } catch (error) {
     console.error('Failed to send notification:', error);

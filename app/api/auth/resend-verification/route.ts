@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserByEmail, updateUser } from '@/lib/db';
-import { enqueueVerificationEmail } from '@/lib/email';
+import { sendVerificationEmail } from '@/lib/email';
 import crypto from 'crypto';
 
 export async function POST(request: NextRequest) {
@@ -42,10 +42,11 @@ export async function POST(request: NextRequest) {
       verificationTokenExpiresAt,
     });
 
-    // Queue verification email (cron sends it; do not block response)
-    const queued = await enqueueVerificationEmail(user.email, verificationToken, request);
-    if (!queued) {
-      console.error('Failed to queue verification email for', user.email);
+    // Send verification email immediately via SMTP (no queue)
+    try {
+      await sendVerificationEmail(user.email, verificationToken, request);
+    } catch (e) {
+      console.error('Failed to send verification email:', e);
     }
 
     return NextResponse.json({

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createUser, getUserByEmail } from '@/lib/db';
 import { hashPassword, generateToken } from '@/lib/auth';
-import { enqueueVerificationEmail } from '@/lib/email';
+import { sendVerificationEmail } from '@/lib/email';
 import { cleanupUnverifiedAccounts } from '@/lib/cleanup';
 import crypto from 'crypto';
 
@@ -56,10 +56,11 @@ export async function POST(request: NextRequest) {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `${protocol}://${host}`;
     const verificationUrl = `${baseUrl}/verify-email?token=${verificationToken}`;
 
-    // Queue verification email (non-blocking; cron sends it)
-    const queued = await enqueueVerificationEmail(user.email, verificationToken, request);
-    if (!queued) {
-      console.error('Failed to queue verification email for', user.email);
+    // Send verification email immediately via SMTP (no queue)
+    try {
+      await sendVerificationEmail(user.email, verificationToken, request);
+    } catch (e) {
+      console.error('Failed to send verification email:', e);
     }
 
     // Cleanup unverified accounts older than 1 hour (non-blocking)

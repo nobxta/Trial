@@ -20,6 +20,24 @@ const CONNECTION_ERROR_CODES = new Set(['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED
 
 let transporter: nodemailer.Transporter | null = null;
 
+/** Lazy transporter: create from env at first send (serverless-safe). */
+function getTransporter(): nodemailer.Transporter | null {
+  if (typeof window !== 'undefined') return null;
+  if (transporter) return transporter;
+  const smtp = getSmptConfig();
+  if (!smtp) return null;
+  transporter = nodemailer.createTransport({
+    host: smtp.host,
+    port: smtp.port,
+    secure: smtp.secure,
+    auth: { user: smtp.user, pass: smtp.pass },
+    connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS,
+    greetingTimeout: SMTP_CONNECTION_TIMEOUT_MS,
+    socketTimeout: SMTP_SOCKET_TIMEOUT_MS,
+  });
+  return transporter;
+}
+
 /**
  * Insert an email into email_queue for async delivery by cron.
  * Does not block on SMTP. Returns true if inserted, false on failure (graceful).
@@ -112,15 +130,22 @@ export async function sendEmailViaSMTP({
   headers?: Record<string, string>;
   messageId?: string;
 }): Promise<{ success: boolean; messageId?: string; error?: string }> {
-  if (!transporter) {
+  const transport = getTransporter();
+  if (!transport) {
     const error =
-      'SMTP transporter not configured. Set SMTP_USER and SMTP_PASS in your environment.';
+      'SMTP transporter not configured. Set SMTP_USER and SMTP_PASS in your environment (e.g. Vercel → Settings → Environment Variables).';
     console.error(`❌ [MintMove] Email failed to ${to} (${category}): ${error}`);
     return { success: false, error };
   }
 
-  // Get sender address from category mapping
-  const fromHeader = getFromHeader(category);
+  // Get sender address from category mapping (falls back to SMTP_USER if EMAIL_FROM_* unset)
+  let fromHeader: string;
+  try {
+    fromHeader = getFromHeader(category);
+  } catch (e: any) {
+    console.error(`❌ [MintMove] Sender config: ${e?.message}`);
+    return { success: false, error: e?.message ?? 'Missing sender email config' };
+  }
   const fromEmail = fromHeader.match(/<(.+)>/)?.[1] || '';
 
   console.log(`📧 [MintMove] Sending ${category} email`);
@@ -142,7 +167,7 @@ export async function sendEmailViaSMTP({
       const timer = setTimeout(() => {
         reject(new Error(`SMTP send timeout after ${SMTP_SEND_TIMEOUT_MS}ms`));
       }, SMTP_SEND_TIMEOUT_MS);
-      transporter!
+      transport
         .sendMail(mailOptions)
         .then((result) => {
           clearTimeout(timer);
@@ -178,23 +203,6 @@ export async function sendEmailViaSMTP({
   }
 }
 
-// Initialize transporter from centralized env (no direct process.env for secrets).
-// Timeouts avoid hung connections; retry in sendEmailViaSMTP is only for connection errors (no duplicate sends).
-if (typeof window === 'undefined') {
-  const smtp = getSmptConfig();
-  if (smtp) {
-    transporter = nodemailer.createTransport({
-      host: smtp.host,
-      port: smtp.port,
-      secure: smtp.secure,
-      auth: { user: smtp.user, pass: smtp.pass },
-      connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS,
-      greetingTimeout: SMTP_CONNECTION_TIMEOUT_MS,
-      socketTimeout: SMTP_SOCKET_TIMEOUT_MS,
-    });
-  }
-}
-
 export async function sendVerificationEmail(
   email: string, 
   token: string, 
@@ -214,8 +222,8 @@ export async function sendVerificationEmail(
   // Get professional email template
   const { text, html } = getVerificationEmailTemplate(verificationUrl, email);
   
-  // Check if SMTP is configured
-  if (!transporter) {
+  // Check if SMTP is configured (lazy transporter)
+  if (!getTransporter()) {
     const error =
       'SMTP transporter not configured. Set SMTP_USER and SMTP_PASS in your environment.';
     console.error(`❌ Email failed to ${email}: ${error}`);
@@ -255,8 +263,8 @@ export async function sendGenericEmail(
   category: EmailCategory = 'GENERIC',
   request?: NextRequest
 ): Promise<boolean> {
-  // Check if SMTP is configured
-  if (!transporter) {
+  // Check if SMTP is configured (lazy transporter)
+  if (!getTransporter()) {
     const error =
       'SMTP transporter not configured. Set SMTP_USER and SMTP_PASS in your environment.';
     console.error(`❌ Email failed to ${to}: ${error}`);
