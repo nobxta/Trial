@@ -182,7 +182,7 @@ CREATE TABLE email_queue (
 **Environment Variables Location:**
 - Loaded from `.env.local` (local development)
 - Set in Vercel project settings (production)
-- Documentation: `notes/README.md:55-61`, `notes/README_SUPABASE.md:50-56`
+- Documentation: `docs/notes/README.md`, `docs/notes/README_SUPABASE.md`
 
 **Connection Settings:**
 - Connection timeout: 5000ms

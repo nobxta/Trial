@@ -1,6 +1,4 @@
 {
-  "_comment_process_email_queue": "Critical: processes email_queue table so verification and order emails are sent; without this cron queued emails never send.",
-  "_comment_reconcile_orders": "Webhook failure recovery: reconciles orders stuck in NEW/CONFIRMING by polling NOWPayments.",
   "crons": [
     {
       "path": "/api/cron/process-email-queue",

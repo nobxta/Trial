@@ -767,7 +767,7 @@ PUBLIC_BASE_URL=https://df8130e37556.ngrok-free.app
    - `components/ExchangeWidgetNew.tsx` - May be unused (verify)
 
 2. **Documentation Files:**
-   - Multiple markdown files in root (`BLOG_AUDIT_FIXES.md`, `EMAIL_FLOW_ANALYSIS.md`, etc.)
+   - Documentation in `docs/` (`BLOG_AUDIT_FIXES.md`, `EMAIL_FLOW_ANALYSIS.md`, etc.)
    - **Recommendation:** Move to `docs/` folder
 
 3. **Scripts:**
