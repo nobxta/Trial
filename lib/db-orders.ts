@@ -351,6 +351,34 @@ export async function findStaleOrders(options: {
   return (data ?? []).map(mapOrderRow);
 }
 
+/**
+ * Find orders eligible for expiry-by-time (for a future cron).
+ * RULE: Only orders still in NEW or AWAITING_DEPOSIT may be marked EXPIRED by time.
+ * If status is CONFIRMING, PAYMENT_CONFIRMED, or PROCESSING_BY_PROVIDER, the expiry job must ignore the order
+ * (payment was detected; do not expire based on expires_at).
+ */
+export async function findOrdersEligibleForExpiryByTime(options: { limit?: number }): Promise<Order[]> {
+  checkSupabase();
+
+  const limit = Math.min(options.limit ?? 100, 200);
+  const nowIso = new Date().toISOString();
+
+  const { data, error } = await supabaseAdmin!
+    .from('orders')
+    .select('*')
+    .in('internal_status', ['NEW', 'AWAITING_DEPOSIT'])
+    .not('expires_at', 'is', null)
+    .lt('expires_at', nowIso)
+    .order('expires_at', { ascending: true })
+    .limit(limit);
+
+  if (error) {
+    throw wrapDbError(error, 'findOrdersEligibleForExpiryByTime');
+  }
+
+  return (data ?? []).map(mapOrderRow);
+}
+
 /** Paid-but-not-DONE statuses: payment confirmed by provider but order not yet DONE. */
 const PAID_NOT_DONE_STATUSES = ['PAYMENT_CONFIRMED', 'MANUAL_REVIEW', 'PROCESSING_BY_PROVIDER'] as const;
 
@@ -563,8 +591,6 @@ export async function updateOrderStatus(
 ): Promise<Order | null> {
   checkSupabase();
 
-  // Get current order status for transition validation
-  console.log('🔵 [updateOrderStatus] Fetching current order status for:', orderId);
   const { data: currentOrder, error: fetchError } = await supabaseAdmin!
     .from('orders')
     .select('internal_status, status, status_source')
@@ -580,10 +606,6 @@ export async function updateOrderStatus(
   // Use internal_status if available, fallback to legacy status
   const currentInternalStatus = (currentOrder.internal_status || currentOrder.status) as InternalStatus;
   const currentStatusSource = currentOrder.status_source;
-  console.log('🔵 [updateOrderStatus] Current internal_status:', currentInternalStatus);
-  console.log('🔵 [updateOrderStatus] Current status_source:', currentStatusSource);
-  console.log('🔵 [updateOrderStatus] Target internal_status:', internalStatus);
-  console.log('🔵 [updateOrderStatus] Update source:', options?.source);
 
   // CRITICAL: Webhook updates are AUTHORITATIVE - they bypass ALL state machine validation
   // Webhooks represent external truth from NOWPayments (signature-verified)
@@ -605,9 +627,6 @@ export async function updateOrderStatus(
     const isCurrentUpdateFromAdmin = options?.source === 'admin';
 
     if (isAdminDecision && !isCurrentUpdateFromAdmin) {
-      console.warn(
-        `⚠️  [updateOrderStatus] Admin override protection: Order ${orderId} status was set by admin (${currentInternalStatus}). Update blocked (source: ${options?.source}).`
-      );
       // Return current order to indicate "no change" (not an error)
       const { data: existingOrder, error: fetchErr } = await supabaseAdmin!
         .from('orders')
@@ -624,17 +643,10 @@ export async function updateOrderStatus(
       return mapOrderRow(existingOrder);
     }
 
-    // Validate status transition using strict state machine (only for non-webhook updates)
     if (!options?.skipTransitionCheck) {
       const canTransitionResult = canTransition(currentInternalStatus, internalStatus);
-      console.log('🔵 [updateOrderStatus] canTransition check:', canTransitionResult);
-      console.log('🔵 [updateOrderStatus] From:', currentInternalStatus, 'To:', internalStatus);
-      
+
       if (!canTransitionResult) {
-        const source = options?.source || 'system';
-        console.error(
-          `🚫 [updateOrderStatus] Invalid status transition blocked: Order ${orderId} cannot transition from ${currentInternalStatus} to ${internalStatus} (source: ${source})`
-        );
         // Return current order instead of null to indicate "no change" (not an error)
         const { data: existingOrder, error: fetchErr } = await supabaseAdmin!
           .from('orders')
@@ -670,10 +682,8 @@ export async function updateOrderStatus(
     updateData.status_updated_by = options.updatedBy;
   }
 
-  // Update provider status if provided
   if (paymentData?.providerStatus) {
     updateData.provider_status = paymentData.providerStatus;
-    console.log('🔵 [updateOrderStatus] Setting provider_status:', paymentData.providerStatus);
   }
 
   // Optionally update address if provided and not already set
@@ -693,9 +703,6 @@ export async function updateOrderStatus(
     }
   }
 
-  console.log('🔵 [updateOrderStatus] Update data:', JSON.stringify(updateData, null, 2));
-  console.log('🔵 [updateOrderStatus] Executing database update...');
-
   const { data, error } = await supabaseAdmin!
     .from('orders')
     .update(updateData)
@@ -709,20 +716,6 @@ export async function updateOrderStatus(
   }
 
   if (!data) return null;
-
-  console.log('✅ [updateOrderStatus] Database update successful');
-  console.log('🔵 [updateOrderStatus] Updated order internal_status:', data.internal_status);
-  console.log('🔵 [updateOrderStatus] Updated order provider_status:', data.provider_status);
-  console.log('🔵 [updateOrderStatus] Updated order user_status:', data.user_status);
-
-  // Defensive log for webhook-driven updates
-  if (isWebhookUpdate) {
-    console.log('🟢 Webhook-driven order update persisted', {
-      order_id: orderId,
-      internal_status: data.internal_status,
-      provider_status: data.provider_status,
-    });
-  }
 
   // Record status change in history (only if status actually changed)
   if (currentInternalStatus !== internalStatus) {

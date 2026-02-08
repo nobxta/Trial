@@ -893,9 +893,7 @@ tbody tr {
   }
 }.animate-scale-in {
   animation: scaleIn 0.3s ease-out;
-}
-
-.animate-card-enter {
+}.animate-card-enter {
   animation: scaleIn 0.5s ease-out both;
 }
 
@@ -923,8 +921,6 @@ tbody tr {
     border-color: rgba(59, 130, 246, 0.6);
     box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
   }
-}
-
-.animate-border-glow {
+}.animate-border-glow {
   animation: borderGlow 2s ease-in-out infinite;
 }

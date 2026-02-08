@@ -35,7 +35,8 @@ export async function GET(
       );
     }
 
-    // Sandbox: apply simulated outcome (e.g. success) so the order page updates without webhook
+    // Sandbox only: apply simulated outcome (e.g. success) so the order page updates without webhook.
+    // Live orders: maybeApplySandboxSimulation returns unchanged (order.paymentMode !== 'sandbox').
     order = await maybeApplySandboxSimulation(order);
 
     // Return user-facing data ONLY

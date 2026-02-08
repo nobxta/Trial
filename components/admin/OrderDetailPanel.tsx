@@ -329,20 +329,20 @@ const OrderDetailPanel = memo(function OrderDetailPanel({ data }: OrderDetailPan
           Admin Actions
         </h2>
         
-        {/* Manual Payout Mode Warning */}
-        {payoutMode === 'manual' && ['PAYMENT_CONFIRMED', 'MANUAL_REVIEW', 'CONFIRMING', 'PROCESSING_BY_PROVIDER'].includes(data.order.internalStatus || data.order.status) && (
+        {/* In-progress order info: swaps complete automatically; actions below are for edge cases */}
+        {['PAYMENT_CONFIRMED', 'MANUAL_REVIEW', 'CONFIRMING', 'PROCESSING_BY_PROVIDER'].includes(data.order.internalStatus || data.order.status) && (
           <div 
             className="mb-4 p-4 rounded-lg"
             style={{
-              background: 'rgba(245, 158, 11, 0.1)',
-              border: '1px solid rgba(245, 158, 11, 0.3)'
+              background: 'rgba(59, 130, 246, 0.08)',
+              border: '1px solid rgba(59, 130, 246, 0.25)'
             }}
           >
-            <p className="text-sm font-semibold mb-1" style={{ color: 'var(--admin-warning-light)' }}>
-              Manual Payout Mode Active
+            <p className="text-sm font-semibold mb-1" style={{ color: 'var(--admin-primary-light)' }}>
+              Swap completes automatically
             </p>
             <p className="text-xs" style={{ color: 'var(--admin-text-muted)' }}>
-              Payment confirmed. You must send crypto manually to the user&apos;s address, then mark this order as completed.
+              Sandbox: 7–20 min. Live: when NOWPayments webhook reports finished. Use the actions below only if an order is stuck and you need to resync or mark completed manually.
             </p>
             {data.order.toAddress && (
               <p className="text-xs font-mono mt-2 break-all" style={{ color: 'var(--admin-text-primary)' }}>
@@ -370,7 +370,7 @@ const OrderDetailPanel = memo(function OrderDetailPanel({ data }: OrderDetailPan
             {actionLoading === 'verify_payment' ? 'Verifying...' : 'Verify Payment (Read-only)'}
           </button>
 
-          {/* Approve for Manual Payout */}
+          {/* Move to Manual Review (edge case: e.g. flag for manual handling) */}
           {['PAYMENT_CONFIRMED', 'CONFIRMING'].includes(data.order.internalStatus || data.order.status) && (
             <button
               onClick={() => {
@@ -386,7 +386,7 @@ const OrderDetailPanel = memo(function OrderDetailPanel({ data }: OrderDetailPan
               }}
             >
               <ClipboardCheck className="w-4 h-4" strokeWidth={2.5} />
-              {actionLoading === 'approve_manual_payout' ? 'Processing...' : 'Approve for Manual Payout'}
+              {actionLoading === 'approve_manual_payout' ? 'Processing...' : 'Move to Manual Review'}
             </button>
           )}
 

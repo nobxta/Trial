@@ -196,7 +196,7 @@ const OrdersTable = memo(function OrdersTable({ orders, total, isReviewQueue = f
       },
       {
         id: 'manual_payout',
-        header: 'Manual payout',
+        header: 'Actions',
         cell: ({ row }) => {
           const order = row.original;
           const status = order.internal_status || order.status;
@@ -300,10 +300,10 @@ const OrdersTable = memo(function OrdersTable({ orders, total, isReviewQueue = f
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-semibold mb-1" style={{ color: 'var(--admin-primary-light)' }}>
-                Default View: Payment Confirmed & Manual Review
+                Default View: Payment Confirmed & In Progress
               </p>
               <p className="text-xs" style={{ color: 'var(--admin-text-muted)' }}>
-                Showing orders with PAYMENT_CONFIRMED or MANUAL_REVIEW status. Unpaid orders are hidden by default.
+                Showing orders with PAYMENT_CONFIRMED or MANUAL_REVIEW status. These complete automatically; unpaid orders are hidden by default.
               </p>
             </div>
             <label className="flex items-center space-x-2 cursor-pointer">
@@ -343,10 +343,10 @@ const OrdersTable = memo(function OrdersTable({ orders, total, isReviewQueue = f
         >
           <div>
             <p className="text-sm font-semibold mb-1" style={{ color: 'var(--admin-warning-light)' }}>
-              Manual Review Queue
+              In-Progress Queue
             </p>
             <p className="text-xs" style={{ color: 'var(--admin-text-muted)' }}>
-              Orders with confirmed payment, sorted oldest first. Ready for manual payout processing.
+              Orders with confirmed payment, sorted oldest first. They complete automatically (sandbox 7–20 min; live when provider reports finished).
             </p>
           </div>
         </div>

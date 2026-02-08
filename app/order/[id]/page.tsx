@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { MessageCircle, HelpCircle, Check } from "lucide-react";
@@ -71,7 +71,7 @@ function getAssetMeta(assetCode: string): { name: string; icon: string } {
 }
 
 // Map internal_status to timeline step (0–3). Must match lib/status-mapping getCurrentStep.
-// 0: Awaiting deposit | 1: Deposit received | 2: Exchanging | 3: Completed
+// 0: Awaiting deposit | 1: Confirming on Chain | 2: Swap in Progress | 3: Completed
 function getStepFromInternalStatus(internalStatus: string | null): number {
   if (!internalStatus) return 0;
   switch (internalStatus) {
@@ -138,13 +138,13 @@ export default function OrderPage({ params }: { params: { id: string } }) {
   
   // Refs for polling management
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // Fetch order from API (single source of truth)
-  const fetchOrder = async (): Promise<void> => {
+
+  // Fetch order from API (single source of truth). useCallback so polling effect has stable deps.
+  const fetchOrder = useCallback(async (): Promise<void> => {
     setIsSyncing(true);
     try {
       const res = await fetch(`/api/order/${orderId}`);
-      
+
       if (!res.ok) {
         if (res.status === 404) {
           setError('Order not found');
@@ -160,12 +160,12 @@ export default function OrderPage({ params }: { params: { id: string } }) {
         setIsSyncing(false);
         return;
       }
-      
+
       const data = await res.json();
-      
+
       if (data?.success && data?.order) {
         const apiOrder = data.order;
-        
+
         // CRITICAL: ALWAYS update state - no comparisons, no skipping
         const orderData: Order = {
           id: apiOrder.id,
@@ -188,11 +188,11 @@ export default function OrderPage({ params }: { params: { id: string } }) {
           payinHash: apiOrder.payinHash,
           payoutHash: apiOrder.payoutHash,
         };
-        
+
         setOrder(orderData);
         setLoading(false);
         setError(null);
-        
+
         // Stop polling on final states
         const finalStatuses = ['DONE', 'FAILED', 'EXPIRED'];
         if (finalStatuses.includes(orderData.internalStatus)) {
@@ -212,22 +212,25 @@ export default function OrderPage({ params }: { params: { id: string } }) {
     } finally {
       setIsSyncing(false);
     }
-  };
-  
-  // Set up polling: fetch order every 6 seconds (reduces server load)
+  }, [orderId]);
+
+  // Set up polling: 3s when awaiting payment (faster feedback), 6s otherwise
+  const POLL_FAST_MS = 3000;
+  const POLL_NORMAL_MS = 6000;
+
   useEffect(() => {
     if (!orderId) {
       setError('Order ID is required');
       setLoading(false);
       return;
     }
-    
+
     // Initial fetch
     fetchOrder();
-    
-    // Poll every 6 seconds
-    pollIntervalRef.current = setInterval(fetchOrder, 6000);
-    
+
+    // Start with fast poll (3s); second effect may switch to 6s once order loads and is past awaiting-deposit
+    pollIntervalRef.current = setInterval(fetchOrder, POLL_FAST_MS);
+
     // Visibility-based refetch
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
@@ -235,14 +238,35 @@ export default function OrderPage({ params }: { params: { id: string } }) {
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    
+
     return () => {
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
       }
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [orderId]);
+  }, [orderId, fetchOrder]);
+
+  // When order loads, use faster polling only while awaiting deposit (so payment confirmation appears sooner)
+  useEffect(() => {
+    if (!order || !pollIntervalRef.current) return;
+    const finalStatuses = ['DONE', 'FAILED', 'EXPIRED'];
+    if (finalStatuses.includes(order.internalStatus)) return;
+
+    const awaitingDeposit = order.internalStatus === 'NEW' || order.internalStatus === 'AWAITING_DEPOSIT';
+    const desiredMs = awaitingDeposit ? POLL_FAST_MS : POLL_NORMAL_MS;
+
+    // Re-set interval with the desired frequency (avoid stale closure on intervalMs)
+    clearInterval(pollIntervalRef.current);
+    pollIntervalRef.current = setInterval(fetchOrder, desiredMs);
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, [order?.internalStatus, fetchOrder]);
 
   // One-time confetti when payment is first detected as received (must run before any early return)
   useEffect(() => {
@@ -302,16 +326,18 @@ export default function OrderPage({ params }: { params: { id: string } }) {
     );
   }
   
-  // Timer only until first confirmation (NEW / AWAITING_DEPOSIT). After payment is detected (CONFIRMING+), no time limit.
+  // Timer is only for NEW/AWAITING_DEPOSIT. Once CONFIRMING or beyond, timer is dead—never show "Expired" from client.
   const createdAt = new Date(order.createdAt);
   const defaultTimeLimit = 15 * 60; // 15 minutes
   const elapsed = Math.floor((Date.now() - createdAt.getTime()) / 1000);
-  const showTimer = order.internalStatus === 'NEW' || order.internalStatus === 'AWAITING_DEPOSIT';
+  const inAwaitingDeposit =
+    order.internalStatus === 'NEW' || order.internalStatus === 'AWAITING_DEPOSIT';
+  const showTimer = inAwaitingDeposit;
   const timerExpired = showTimer && elapsed >= defaultTimeLimit;
+  const pastExpiresAt = !!(order.expiresAt && new Date(order.expiresAt) < new Date());
   const isExpired =
     order.internalStatus === 'EXPIRED' ||
-    !!(order.expiresAt && new Date(order.expiresAt) < new Date()) ||
-    timerExpired;
+    (inAwaitingDeposit && (timerExpired || pastExpiresAt));
   const timeRemaining = showTimer && !isExpired ? Math.max(0, defaultTimeLimit - elapsed) : 0;
   
   // Get asset metadata (normalized once)
@@ -448,6 +474,7 @@ export default function OrderPage({ params }: { params: { id: string } }) {
               currentStep={timelineStep}
               isExpired={false}
               isPaymentReceived={isPaymentReceived}
+              internalStatus={order.internalStatus}
             />
           )}
           {isExpired && (

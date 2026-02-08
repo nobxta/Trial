@@ -133,9 +133,7 @@ export async function POST(request: NextRequest) {
           'PUBLIC_BASE_URL cannot be localhost in production. Use a publicly accessible URL.'
         );
       }
-      const ipnCallbackUrl = `${publicBaseUrl}/api/webhook/nowpayments`;
-      paymentParams.ipn_callback_url = ipnCallbackUrl;
-      console.log('🔥 IPN CALLBACK URL USED:', ipnCallbackUrl);
+      paymentParams.ipn_callback_url = `${publicBaseUrl}/api/webhook/nowpayments`;
 
       const payment = await createPayment(paymentParams);
 
@@ -178,11 +176,7 @@ export async function POST(request: NextRequest) {
         await createOrderWithHistoryTransaction(userId, orderData);
       } catch (dbError: any) {
         // Orphan: payment exists in NOWPayments but no order in DB — do not return payment
-        console.error('Orphan payment: DB transaction failed', {
-          payment_id: payment.payment_id,
-          order_id: body.order_id || payment.order_id,
-          error: dbError?.message ?? dbError,
-        });
+        console.error('Orphan payment: DB transaction failed', dbError?.message ?? dbError);
         return NextResponse.json(
           { error: 'Order could not be saved. Please try again.' },
           { status: 500 }
@@ -263,9 +257,7 @@ export async function POST(request: NextRequest) {
           'PUBLIC_BASE_URL cannot be localhost in production. Use a publicly accessible URL.'
         );
       }
-      const ipnCallbackUrlPayment = `${publicBaseUrlPayment}/api/webhook/nowpayments`;
-      paymentParams.ipn_callback_url = ipnCallbackUrlPayment;
-      console.log('🔥 IPN CALLBACK URL USED:', ipnCallbackUrlPayment);
+      paymentParams.ipn_callback_url = `${publicBaseUrlPayment}/api/webhook/nowpayments`;
 
       const payment = await createPayment(paymentParams);
 
@@ -290,11 +282,7 @@ export async function POST(request: NextRequest) {
         await createOrderWithHistoryTransaction(userId, orderDataPayment);
       } catch (dbError: any) {
         // Orphan: payment exists in NOWPayments but no order in DB — do not return payment
-        console.error('Orphan payment: DB transaction failed', {
-          payment_id: payment.payment_id,
-          order_id: body.order_id || payment.order_id,
-          error: dbError?.message ?? dbError,
-        });
+        console.error('Orphan payment: DB transaction failed', dbError?.message ?? dbError);
         return NextResponse.json(
           { error: 'Order could not be saved. Please try again.' },
           { status: 500 }

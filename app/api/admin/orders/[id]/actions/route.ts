@@ -5,7 +5,6 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getPaymentStatus } from '@/lib/nowpayments';
 import { updateOrderStatus } from '@/lib/db-orders';
 import { requireNotMaintenanceMode } from '@/lib/maintenance-mode';
-import { getPayoutMode } from '@/lib/payout-mode';
 import { mapProviderStatusToInternal, type InternalStatus } from '@/lib/status-mapping';
 import { notifyOrderStatus } from '@/lib/notifications';
 import { recordOrderCompletion } from '@/lib/ledger';
@@ -217,20 +216,8 @@ export async function POST(
           }
         }
         const mappedStatus = mapProviderStatusToInternal(paymentStatus.payment_status) as InternalStatus;
-        
-        // CRITICAL: In manual payout mode, prevent automatic DONE status during resync
-        const payoutMode = await getPayoutMode();
-        let finalStatus = mappedStatus;
-        if (payoutMode === 'manual' && (mappedStatus === 'DONE' || paymentStatus.payment_status?.toLowerCase() === 'finished' || paymentStatus.payment_status?.toLowerCase() === 'success')) {
-          // In manual mode, keep at PAYMENT_CONFIRMED or MANUAL_REVIEW
-          if (currentInternalStatus === 'MANUAL_REVIEW') {
-            finalStatus = 'MANUAL_REVIEW';
-          } else {
-            finalStatus = 'PAYMENT_CONFIRMED';
-          }
-        }
-        
-        const updatedOrder = await updateOrderStatus(params.id, finalStatus, {
+
+        const updatedOrder = await updateOrderStatus(params.id, mappedStatus, {
           providerStatus: paymentStatus.payment_status,
         }, {
           source: 'admin',
@@ -255,7 +242,7 @@ export async function POST(
           details: { 
             payment_id: currentOrder.payment_id,
             payment_status: paymentStatus.payment_status,
-            mapped_status: finalStatus,
+            mapped_status: mappedStatus,
           },
           ipAddress,
           userAgent,
@@ -265,7 +252,7 @@ export async function POST(
           success: true, 
           message: 'Order status resynced',
           paymentStatus: paymentStatus.payment_status,
-          orderStatus: finalStatus,
+          orderStatus: updatedOrder.internalStatus,
         });
       }
 
@@ -426,7 +413,7 @@ export async function POST(
       }
 
       case 'mark_completed': {
-        // Manual completion: Admin confirms payout was sent manually
+        // Manual payout mode: Admin confirms payout was sent manually. Automated swaps complete via webhook (idempotent).
         // Only allow for orders in PAYMENT_CONFIRMED, MANUAL_REVIEW, or PROCESSING_BY_PROVIDER
         const allowedStatuses: InternalStatus[] = ['PAYMENT_CONFIRMED', 'MANUAL_REVIEW', 'PROCESSING_BY_PROVIDER', 'CONFIRMING'];
         if (!allowedStatuses.includes(currentInternalStatus)) {

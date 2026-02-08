@@ -117,7 +117,7 @@ export default async function AdminOrdersPage({
         )}
       </div>
       <p className="text-sm mb-6" style={{ color: 'var(--admin-text-muted)', maxWidth: '56rem' }}>
-        <strong style={{ color: 'var(--admin-text-secondary)' }}>Use this page for:</strong> Managing orders. The swap is automated and usually completes in 7–20 minutes. User sees: Waiting for confirmation → Performing exchange → Completed. Use <strong>Confirmed</strong> in the Manual payout column only if you need to mark an order done manually (e.g. automated system didn’t update). Click an Order ID for full details and actions (lock, verify, notes).
+        <strong style={{ color: 'var(--admin-text-secondary)' }}>Use this page for:</strong> Managing orders. Every order that reaches PAYMENT_CONFIRMED completes automatically (sandbox: 7–20 min; live: when NOWPayments webhook reports finished). No admin click required. Click an Order ID for full details and actions (resync, mark completed, lock, verify).
       </p>
       <OrdersTable orders={orders} total={total} isReviewQueue={isReviewQueue} />
     </div>

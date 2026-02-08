@@ -43,14 +43,16 @@ export default function OrderInfoQRCard({
   const [copiedOrderId, setCopiedOrderId] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(initialTimeRemaining);
 
+  // Timer only runs while awaiting deposit. Clear as soon as status leaves NEW/AWAITING_DEPOSIT (showTimeRemaining becomes false).
   useEffect(() => {
     if (!showTimeRemaining || isExpired) {
       setTimeRemaining(0);
       return;
     }
+    setTimeRemaining(initialTimeRemaining);
     const interval = setInterval(() => setTimeRemaining((p) => (p <= 1 ? 0 : p - 1)), 1000);
     return () => clearInterval(interval);
-  }, [showTimeRemaining, isExpired]);
+  }, [showTimeRemaining, isExpired, initialTimeRemaining]);
 
   const copyOrderId = async () => {
     try {

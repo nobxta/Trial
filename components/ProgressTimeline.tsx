@@ -1,22 +1,31 @@
 "use client";
 
 import { Wallet, Hourglass, ArrowRightLeft, CheckCircle2, Clock } from "lucide-react";
+import { getTimelineStepSublabel } from "@/lib/status-mapping";
 
 interface ProgressTimelineProps {
   currentStep: number;
   isExpired?: boolean;
   /** When true, active step uses vibrant green instead of blue to signal positive progress */
   isPaymentReceived?: boolean;
+  /** When provided, active step shows dynamic sublabel (e.g. "Waiting for network confirmations...") */
+  internalStatus?: string | null;
 }
 
-const STEPS = [
-  { id: 0, label: "Awaiting deposit", sublabel: null, icon: Wallet },
-  { id: 1, label: "Deposit received", sublabel: null, icon: Hourglass },
-  { id: 2, label: "Exchanging", sublabel: null, icon: ArrowRightLeft },
-  { id: 3, label: "Completed", sublabel: null, icon: CheckCircle2 },
+// Crypto-native labels. When a step is completed, show past tense (professional "done" state).
+const STEPS: { id: number; label: string; completedLabel: string; icon: typeof Wallet }[] = [
+  { id: 0, label: "Awaiting deposit", completedLabel: "Deposit Sent", icon: Wallet },
+  { id: 1, label: "Confirming on Chain", completedLabel: "Payment Confirmed", icon: Hourglass },
+  { id: 2, label: "Swap in Progress", completedLabel: "Assets Swapped", icon: ArrowRightLeft },
+  { id: 3, label: "Completed", completedLabel: "Completed", icon: CheckCircle2 },
 ];
 
-export default function ProgressTimeline({ currentStep, isExpired = false, isPaymentReceived = false }: ProgressTimelineProps) {
+export default function ProgressTimeline({
+  currentStep,
+  isExpired = false,
+  isPaymentReceived = false,
+  internalStatus = null,
+}: ProgressTimelineProps) {
   const stepIndex = Math.min(Math.max(0, currentStep), 3);
 
   const activeStepStyle = isPaymentReceived
@@ -35,13 +44,19 @@ export default function ProgressTimeline({ currentStep, isExpired = false, isPay
             const isCompleted = !isExpired && stepIndex > index;
             const isLast = index === STEPS.length - 1;
             const isExpiredAtFirst = isExpired && index === 0;
-            const label = isExpiredAtFirst ? "Expired" : step.label;
+            const label = isExpiredAtFirst ? "Expired" : isCompleted ? step.completedLabel : step.label;
+            const activeSublabel =
+              isActive && internalStatus != null
+                ? getTimelineStepSublabel(internalStatus, index)
+                : null;
 
             return (
               <div key={step.id} className="flex flex-1 items-center min-w-0 overflow-visible">
                 <div className="flex flex-col items-center flex-1 min-w-0 overflow-visible">
                   <div
                     className={`relative w-12 h-12 rounded-full flex items-center justify-center border transition-all ${
+                      isActive ? "animate-pulse" : ""
+                    } ${
                       isExpiredAtFirst
                         ? "border-slate-500/40 bg-slate-500/10 text-slate-500"
                         : isActive
@@ -61,15 +76,21 @@ export default function ProgressTimeline({ currentStep, isExpired = false, isPay
                   </div>
                   <span
                     className={`mt-2 text-[10px] sm:text-xs font-medium text-center leading-tight max-w-[80px] sm:max-w-none ${
-                      isExpiredAtFirst ? "text-slate-500" : isActive ? activeLabelStyle : isCompleted ? "text-emerald-500" : "text-slate-500"
+                      isExpiredAtFirst
+                        ? "text-slate-500"
+                        : isActive
+                        ? activeLabelStyle
+                        : isCompleted
+                        ? "text-emerald-500"
+                        : "text-slate-500"
                     }`}
-                    title={step.sublabel ? `${label} — ${step.sublabel}` : label}
+                    title={activeSublabel ? `${label} — ${activeSublabel}` : label}
                   >
                     {label}
                   </span>
-                  {step.sublabel && (isActive || isCompleted) && (
-                    <span className="mt-0.5 text-[9px] sm:text-[10px] text-slate-500 text-center">
-                      {step.sublabel}
+                  {activeSublabel != null && activeSublabel !== "" && (
+                    <span className="mt-0.5 text-[9px] sm:text-[10px] text-slate-500 text-center max-w-[100px] sm:max-w-none">
+                      {activeSublabel}
                     </span>
                   )}
                 </div>

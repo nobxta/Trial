@@ -2,12 +2,15 @@
  * Webhook failure recovery: reconcile orders stuck in NEW/CONFIRMING by polling NOWPayments.
  * Reuses the same atomic update path as the webhook (processWebhookStatusUpdateAtomic) so
  * idempotency is respected and we do not duplicate webhook logic.
+ *
+ * EXPIRY RULE: We never set EXPIRED from reconciliation based on time. We only apply provider
+ * status (e.g. provider sends "expired" → we set EXPIRED). Any future "expire by time" job must
+ * only consider orders in NEW or AWAITING_DEPOSIT (see findOrdersEligibleForExpiryByTime).
  */
 
 import { getPaymentStatus } from '@/lib/nowpayments';
 import { findStaleOrders, findStalePaidOrders, processWebhookStatusUpdateAtomic, type Order } from '@/lib/db-orders';
 import { mapProviderStatusToInternal, getUserFacingStatus, type InternalStatus } from '@/lib/status-mapping';
-import { getPayoutMode } from '@/lib/payout-mode';
 
 export interface ReconcileOptions {
   /** Consider orders stale if not updated for this many minutes. */
@@ -32,25 +35,6 @@ export interface ReconcileResult {
 }
 
 /**
- * Apply the same manual-payout override as the webhook handler.
- * Centralized so webhook and reconciliation stay in sync.
- */
-function applyManualPayoutOverride(
-  order: Order,
-  paymentStatus: string,
-  mappedStatus: InternalStatus
-): InternalStatus {
-  if (mappedStatus !== 'DONE' && paymentStatus?.toLowerCase() !== 'finished' && paymentStatus?.toLowerCase() !== 'success') {
-    return mappedStatus;
-  }
-  const currentInternalStatus = order.internalStatus || order.status;
-  if (currentInternalStatus === 'PROCESSING_BY_PROVIDER') {
-    return 'MANUAL_REVIEW';
-  }
-  return 'PAYMENT_CONFIRMED';
-}
-
-/**
  * Run webhook failure recovery: find stale orders, poll NOWPayments, reconcile via atomic update.
  * Idempotency is respected because we call processWebhookStatusUpdateAtomic (same as webhook).
  */
@@ -70,8 +54,6 @@ export async function runOrderReconciliation(options: ReconcileOptions): Promise
   if (orders.length === 0) {
     return result;
   }
-
-  const payoutMode = await getPayoutMode();
 
   for (const order of orders) {
     const paymentId = order.paymentId;
@@ -113,10 +95,7 @@ export async function runOrderReconciliation(options: ReconcileOptions): Promise
       continue;
     }
 
-    let mappedStatus = mapProviderStatusToInternal(providerStatus) as InternalStatus;
-    if (payoutMode === 'manual') {
-      mappedStatus = applyManualPayoutOverride(order, providerStatus, mappedStatus);
-    }
+    const mappedStatus = mapProviderStatusToInternal(providerStatus) as InternalStatus;
 
     try {
       const updateResult = await processWebhookStatusUpdateAtomic({

@@ -31,25 +31,25 @@ export async function sendNotification(
     const user = await getUserWithPreferences(userId);
     
     if (!user) {
+      console.log('📧 Order status email skipped: user not found');
       return false;
     }
 
-    // Check if notifications are enabled
     if (!user.notificationsEnabled) {
+      console.log('📧 Order status email skipped: user notifications disabled');
       return false;
     }
 
-    // Check if email is verified (required for notifications)
     if (!user.emailVerified) {
+      console.log('📧 Order status email skipped: email not verified');
       return false;
     }
 
-    // Check if order notifications are enabled (for order_status type)
     if (notification.type === 'order_status') {
       const orderNotificationsEnabled = await getEmailSetting('order_notifications_enabled', 'true');
       if (orderNotificationsEnabled !== 'true') {
-        console.log(`📧 Order notification disabled for user ${userId} (order_notifications_enabled = false)`);
-        return true; // Return true silently
+        console.log('📧 Order status email skipped: order_notifications_enabled is false (Admin → Settings → Email)');
+        return true;
       }
     }
 
@@ -93,8 +93,9 @@ export async function notifyOrderStatus(
   status: string,
   request?: NextRequest
 ): Promise<boolean> {
-  // Guard: do not query DB with null IDs; skip notification safely for anonymous orders
+  // Guard: anonymous/guest orders have no user — no email (only order page / track by order ID)
   if (userId == null || userId === '') {
+    console.log('📧 Order status email skipped: guest order (no userId)');
     return true;
   }
 

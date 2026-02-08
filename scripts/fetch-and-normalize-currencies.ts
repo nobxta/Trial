@@ -7,7 +7,8 @@ import fs from 'fs';
 import path from 'path';
 
 const NOWPAYMENTS_API_URL = 'https://api.nowpayments.io/v1';
-const NOWPAYMENTS_API_KEY = process.env.NOWPAYMENTS_API_KEY || process.env.NEXT_PUBLIC_NOWPAYMENTS_API_KEY || '';
+// SECURITY: Use server-only env. Never NEXT_PUBLIC_* — that would expose the key in client bundles.
+const NOWPAYMENTS_API_KEY = process.env.NOWPAYMENTS_API_KEY || '';
 
 interface NormalizedCrypto {
   id: string;

@@ -26,13 +26,13 @@ export type InternalStatus =
   | 'EXPIRED';
 
 // ============================================================================
-// USER-FACING STATUSES (Professional flow: Awaiting deposit → Deposit received → Exchanging → Completed)
+// USER-FACING STATUSES (Crypto-native flow: Awaiting deposit → Confirming on Chain → Swap in Progress → Completed)
 // ============================================================================
 
 export type UserStatus =
   | 'Awaiting deposit'
-  | 'Deposit received'
-  | 'Exchanging'
+  | 'Confirming on Chain'
+  | 'Swap in Progress'
   | 'Completed'
   | 'Failed'
   | 'Expired';
@@ -64,8 +64,8 @@ export type StatusSource = 'webhook' | 'admin' | 'system';
 // ============================================================================
 
 /**
- * Map internal status to user-facing status (professional flow).
- * Flow: Awaiting deposit → Deposit received → Exchanging → Completed.
+ * Map internal status to user-facing status (crypto-native flow).
+ * Flow: Awaiting deposit → Confirming on Chain → Swap in Progress → Completed.
  */
 export function getUserFacingStatus(internalStatus: string | null): UserStatus {
   if (!internalStatus) {
@@ -75,10 +75,10 @@ export function getUserFacingStatus(internalStatus: string | null): UserStatus {
   const mapping: Record<InternalStatus, UserStatus> = {
     'NEW': 'Awaiting deposit',
     'AWAITING_DEPOSIT': 'Awaiting deposit',
-    'CONFIRMING': 'Deposit received',       // Payment seen, confirming on blockchain
-    'PAYMENT_CONFIRMED': 'Exchanging',      // Confirmed; exchange in progress
-    'PROCESSING_BY_PROVIDER': 'Exchanging',
-    'MANUAL_REVIEW': 'Exchanging',
+    'CONFIRMING': 'Confirming on Chain',       // Payment detected, confirming on blockchain
+    'PAYMENT_CONFIRMED': 'Swap in Progress',  // Confirmed; swap in progress
+    'PROCESSING_BY_PROVIDER': 'Swap in Progress',
+    'MANUAL_REVIEW': 'Swap in Progress',
     'DONE': 'Completed',
     'FAILED': 'Failed',
     'EXPIRED': 'Expired',
@@ -88,10 +88,38 @@ export function getUserFacingStatus(internalStatus: string | null): UserStatus {
 }
 
 /**
+ * Get sublabel for the active timeline step (shown under the icon).
+ * Used for crypto-native micro-copy (e.g. "Waiting for network confirmations...").
+ */
+export function getTimelineStepSublabel(
+  internalStatus: string | null,
+  stepIndex: number
+): string | null {
+  if (stepIndex === 0) {
+    return internalStatus === 'NEW' || internalStatus === 'AWAITING_DEPOSIT'
+      ? 'Send exact amount to the address below'
+      : null;
+  }
+  if (stepIndex === 1) {
+    return internalStatus === 'CONFIRMING'
+      ? 'Confirmations: 1–3 • Waiting for network confirmations'
+      : null;
+  }
+  if (stepIndex === 2) {
+    return ['PAYMENT_CONFIRMED', 'PROCESSING_BY_PROVIDER', 'MANUAL_REVIEW'].includes(
+      internalStatus || ''
+    )
+      ? 'Settling on-chain'
+      : null;
+  }
+  return null;
+}
+
+/**
  * Get progress step number for UI (0-3)
  * Step 0: Awaiting deposit
- * Step 1: Deposit received (confirming on blockchain)
- * Step 2: Exchanging
+ * Step 1: Confirming on Chain (payment detected, awaiting confirmations)
+ * Step 2: Swap in Progress
  * Step 3: Completed
  */
 export function getCurrentStep(internalStatus: string | null): number {

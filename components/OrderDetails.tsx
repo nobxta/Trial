@@ -53,8 +53,28 @@ export default function OrderDetails({
     setTimeRemaining(initialTimeRemaining);
   }, [isExpiredProp, initialTimeRemaining]);
 
+  // Ghost timer kill: once status is CONFIRMING or beyond, destroy timer and never show Expired from client.
+  useEffect(() => {
+    if (
+      internalStatus &&
+      internalStatus !== 'NEW' &&
+      internalStatus !== 'AWAITING_DEPOSIT'
+    ) {
+      setExpiredByTimer(false);
+      setTimeRemaining(0);
+      return;
+    }
+  }, [internalStatus]);
+
   useEffect(() => {
     if (isExpired) return;
+    if (
+      internalStatus &&
+      internalStatus !== 'NEW' &&
+      internalStatus !== 'AWAITING_DEPOSIT'
+    ) {
+      return;
+    }
     const interval = setInterval(() => {
       setTimeRemaining((prev) => {
         if (prev <= 1) {
@@ -65,7 +85,7 @@ export default function OrderDetails({
       });
     }, 1000);
     return () => clearInterval(interval);
-  }, [isExpired]);
+  }, [isExpired, internalStatus]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
