@@ -7,7 +7,7 @@ import { recordCronSuccess, recordCronFailure, alertIfCronStale, getPendingEmail
 const ENDPOINT = '/api/cron/process-email-queue';
 
 /**
- * Vercel Cron Job: Process email queue
+ * Cron: Process email queue. Call via external scheduler (e.g. cron-job.org). See docs/EXTERNAL_CRON_SETUP.md.
  * Security: In production CRON_SECRET must exist and be non-empty; fail closed.
  */
 export async function GET(request: NextRequest) {

@@ -1,98 +1,113 @@
-# External Cron Setup — Reconciliation Worker
+# Cron Jobs via cron-job.org
 
-The reconciliation endpoint is **fully compatible with external cron services** (e.g. cron-job.org). You can turn off Vercel cron and run it externally.
-
----
-
-## 1. Endpoint compatibility
-
-| Requirement | Status |
-|-------------|--------|
-| **HTTP method** | **GET** and **POST** are both supported. Use either. |
-| **Authentication** | **Required.** Send `Authorization: Bearer <CRON_SECRET>`. Requests without the correct secret receive **401 Unauthorized**. |
-| **Idempotent** | Yes. Safe to run multiple times; reconciliation and manual auto-complete use idempotency. |
-| **Vercel-specific** | No. No Vercel cron headers or internal scheduling; plain HTTP. |
-| **Response** | JSON with `success`, `reconcile`, `manualAutoComplete`, and `timestamp`. |
+This project **does not use Vercel Cron**. All scheduled tasks run via [cron-job.org](https://cron-job.org) (or any HTTP cron service) calling the API with `Authorization: Bearer <CRON_SECRET>`.
 
 ---
 
-## 2. cron-job.org configuration
+## 1. Environment variable
 
-### Step 1: Create a new cron job
-
-1. Log in at [cron-job.org](https://cron-job.org).
-2. Open **Cronjobs** → **Create cronjob**.
-
-### Step 2: URL and schedule
-
-- **Title:** e.g. `MintMove reconcile orders`
-- **URL:**  
-  ```text
-  https://YOUR_DOMAIN.com/api/cron/reconcile-orders
-  ```  
-  Replace `YOUR_DOMAIN.com` with your production domain (e.g. `mintmove.io`).
-- **Schedule:** **Every 5 minutes**  
-  - In cron-job.org: choose “Every 5 minutes” or equivalent (e.g. “Every 5 min”).
-  - Cron expression equivalent: `*/5 * * * *`
-
-### Step 3: HTTP method and headers
-
-- **Request method:** **GET** or **POST** (both work).
-- **Request headers:** add one header:
-  - **Name:** `Authorization`
-  - **Value:** `Bearer YOUR_CRON_SECRET`  
-  Replace `YOUR_CRON_SECRET` with the value of the `CRON_SECRET` environment variable from your app (Vercel/host). No spaces; exact format: `Bearer <secret>`.
-
-### Step 4: Optional settings
-
-- **Timeout:** Set to at least **60 seconds** (reconciliation can take time).
-- **Failure retries:** Optional; e.g. retry once after 1 minute if the request fails.
-
-### Step 5: Save and enable
-
-Save the cron job and ensure it is **enabled**. cron-job.org will call your URL every 5 minutes with the `Authorization` header.
-
----
-
-## 3. Environment variable
-
-Ensure **CRON_SECRET** is set in your production environment (e.g. Vercel → Project → Settings → Environment Variables):
+Set **CRON_SECRET** in your production environment (e.g. Vercel → Project → Settings → Environment Variables):
 
 - **Name:** `CRON_SECRET`
-- **Value:** A long, random secret (e.g. 32+ characters). Use the same value in cron-job.org as `Bearer <CRON_SECRET>`.
+- **Value:** A long, random secret (e.g. 32+ characters).
 
-If **CRON_SECRET** is missing in production, the endpoint returns **401** and does not run.
+Use the **same value** in cron-job.org as the Bearer token: `Bearer <CRON_SECRET>` (no extra spaces).
 
----
-
-## 4. Logging
-
-The route logs structured JSON to stdout. You can search logs for:
-
-| Log `message` | When |
-|----------------|------|
-| `cron_request_received` | Request passed auth; job started. |
-| `reconciliation_started` | Before reconciliation run. |
-| `manual_auto_complete_started` | Before manual payout auto-complete run. |
-| `manual_auto_complete_executed` | After manual auto-complete (includes counts). |
-| `manual_payout_auto_complete_executed` | Per order when an order is auto-completed (from `lib/order-reconciliation.ts`). |
-| `cron_completed` | Job finished successfully. |
-
-Example successful run (one line per log):
-
-```json
-{"level":"info","message":"cron_request_received","timestamp":"2026-02-10T19:00:00.000Z","source":"cron_reconcile_orders","endpoint":"/api/cron/reconcile-orders","method":"GET"}
-{"level":"info","message":"reconciliation_started","timestamp":"2026-02-10T19:00:00.012Z","source":"cron_reconcile_orders","endpoint":"/api/cron/reconcile-orders"}
-{"level":"info","message":"manual_auto_complete_started","timestamp":"2026-02-10T19:00:05.123Z","source":"cron_reconcile_orders","endpoint":"/api/cron/reconcile-orders"}
-{"level":"info","message":"manual_auto_complete_executed","timestamp":"2026-02-10T19:00:05.456Z","source":"cron_reconcile_orders","endpoint":"/api/cron/reconcile-orders","processed":0,"skipped":0,"errors":0,"processedOrderIds":[]}
-{"level":"info","message":"cron_completed","timestamp":"2026-02-10T19:00:05.789Z","source":"cron_reconcile_orders","endpoint":"/api/cron/reconcile-orders","reconcile_processed":0,"reconcile_errors":0,"manual_processed":0,"manual_errors":0}
-```
+If **CRON_SECRET** is missing or wrong in production, cron endpoints return **401 Unauthorized**.
 
 ---
 
-## 5. Disabling Vercel cron (optional)
+## 2. Common settings for every cron job
 
-If you run the job only via cron-job.org:
+For **each** cron job on cron-job.org:
 
-1. In **vercel.json**, remove or comment out the cron entry for `/api/cron/reconcile-orders`, or  
-2. Leave it in place; the endpoint is idempotent, so running it from both Vercel and cron-job.org (e.g. every 5 min each) is safe but redundant.
+1. **Request method:** GET or POST (both work).
+2. **Request headers:** add one header:
+   - **Name:** `Authorization`
+   - **Value:** `Bearer YOUR_CRON_SECRET` (replace with your actual `CRON_SECRET`).
+3. **Timeout:** Set to at least **60 seconds** for jobs that may run long (reconcile-orders, process-email-queue, update-exchange-limits). update-prices can use 30–60 s.
+4. **Failure retries:** Optional (e.g. retry once after 1 minute).
+
+Replace `YOUR_DOMAIN.com` below with your production domain (e.g. `mintmove.io` or `your-app.vercel.app`).
+
+---
+
+## 3. Cron jobs to create
+
+Create **4 separate cron jobs** on cron-job.org with the following settings.
+
+### Job 1: Reconcile orders (every 5 minutes)
+
+| Setting   | Value |
+|----------|--------|
+| **Title** | `MintMove – Reconcile orders` |
+| **URL**   | `https://YOUR_DOMAIN.com/api/cron/reconcile-orders` |
+| **Schedule** | Every **5 minutes** (or cron `*/5 * * * *`) |
+| **Timeout**  | **60 seconds** or more |
+
+**What it does:** Webhook failure recovery (polls NOWPayments for stuck orders) and manual payout auto-complete. Idempotent; safe to run every 5 minutes.
+
+---
+
+### Job 2: Process email queue (daily at 4 AM UTC)
+
+| Setting   | Value |
+|----------|--------|
+| **Title** | `MintMove – Process email queue` |
+| **URL**   | `https://YOUR_DOMAIN.com/api/cron/process-email-queue` |
+| **Schedule** | **Daily** at **04:00** UTC (or cron `0 4 * * *`) |
+| **Timeout**  | **60 seconds** or more |
+
+**What it does:** Sends pending emails from the `email_queue` table (up to 10 per run). For more frequent sends, you can schedule e.g. every 5–15 minutes.
+
+---
+
+### Job 3: Update crypto prices (daily at 2 AM UTC)
+
+| Setting   | Value |
+|----------|--------|
+| **Title** | `MintMove – Update prices` |
+| **URL**   | `https://YOUR_DOMAIN.com/api/cron/update-prices` |
+| **Schedule** | **Daily** at **02:00** UTC (or cron `0 2 * * *`) |
+| **Timeout**  | **60 seconds** |
+
+**What it does:** Fetches prices for supported cryptos from CoinGecko and updates the `crypto_prices` table.
+
+---
+
+### Job 4: Update exchange limits (daily at 3 AM UTC)
+
+| Setting   | Value |
+|----------|--------|
+| **Title** | `MintMove – Update exchange limits` |
+| **URL**   | `https://YOUR_DOMAIN.com/api/cron/update-exchange-limits` |
+| **Schedule** | **Daily** at **03:00** UTC (or cron `0 3 * * *`) |
+| **Timeout**  | **120 seconds** or more (calls NOWPayments for many pairs) |
+
+**What it does:** Refreshes min/max limits for all currency pairs from NOWPayments into the `exchange_limits` table.
+
+---
+
+## 4. Step-by-step on cron-job.org
+
+1. Log in at [cron-job.org](https://cron-job.org).
+2. Go to **Cronjobs** → **Create cronjob**.
+3. For each of the 4 jobs above:
+   - **Title:** as in the table.
+   - **URL:** as in the table (with your domain).
+   - **Schedule:** as in the table (every 5 min for reconcile; daily at given time for the others).
+   - **Request method:** GET or POST.
+   - **Request headers:** add `Authorization` with value `Bearer YOUR_CRON_SECRET`.
+   - **Timeout:** as in the table.
+4. Save and **enable** each cron job.
+
+cron-job.org will call your URLs at the set times; your app validates `CRON_SECRET` and runs the job.
+
+---
+
+## 5. Logging and monitoring
+
+- **reconcile-orders** and **process-email-queue** write success/failure to the `cron_runs` table and log structured JSON (e.g. `cron_request_received`, `cron_completed`). Check your host logs (e.g. Vercel Logs) for these messages.
+- **update-prices** and **update-exchange-limits** do not write to `cron_runs`; check application logs for their output.
+
+You can use cron-job.org’s execution history and notifications to see if requests succeed or fail (e.g. 401 = wrong/missing `CRON_SECRET`; 500 = application error).
