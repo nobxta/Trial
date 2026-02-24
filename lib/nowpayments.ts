@@ -9,6 +9,7 @@ import {
   getNowPaymentsApiUrl,
   isProductionEnv,
 } from './env';
+import { paymentLogger } from './payment-logger';
 
 /** Timeout for POST (createPayment). No retry to avoid duplicate payments. */
 const NOWPAYMENTS_POST_TIMEOUT_MS = 30_000;
@@ -75,6 +76,8 @@ interface PaymentRequest {
   order_description?: string;
   payout_address?: string;
   payout_currency?: string;
+  /** When true, provider locks conversion rate for ~20 min. When false, rate at confirmation. */
+  is_fixed_rate?: boolean;
   // Sandbox-specific: case parameter for testing scenarios
   case?: 'success' | 'failed' | 'expired' | 'partially_paid';
 }
@@ -91,6 +94,10 @@ interface PaymentResponse {
   ipn_callback_url: string;
   created_at: string;
   updated_at: string;
+  /** Exact amount (crypto) user must send. Use this as canonical "amount to send". */
+  pay_amount?: number;
+  /** Outcome amount (receive currency) when conversion is known (e.g. fixed rate). */
+  outcome_amount?: number;
   payin_extra_id?: string;
   smart_contract?: string;
   network?: string;
@@ -119,6 +126,13 @@ export async function createPayment(params: PaymentRequest): Promise<PaymentResp
   // Get configuration based on current payment mode (LIVE or SANDBOX)
   const config = await getNowPaymentsConfig();
 
+  paymentLogger.envConsistency({
+    payment_creation_base_url: config.baseUrl,
+    polling_base_url: config.baseUrl,
+    mode: config.mode,
+    api_key_prefix: config.apiKey.slice(0, 4),
+  });
+
   // Build request payload
   const payload: any = {
     price_amount: params.price_amount,
@@ -131,7 +145,12 @@ export async function createPayment(params: PaymentRequest): Promise<PaymentResp
   if (params.ipn_callback_url) payload.ipn_callback_url = params.ipn_callback_url;
   if (params.payout_address) payload.payout_address = params.payout_address;
   if (params.payout_currency) payload.payout_currency = params.payout_currency;
-  
+
+  // Fixed vs floating rate: provider locks rate when true (~20 min)
+  if (params.is_fixed_rate !== undefined) {
+    payload.is_fixed_rate = Boolean(params.is_fixed_rate);
+  }
+
   // Sandbox-specific: add case parameter for testing scenarios
   if (config.mode === 'sandbox' && params.case) {
     payload.case = params.case;
@@ -176,10 +195,14 @@ export async function createPayment(params: PaymentRequest): Promise<PaymentResp
     
     // Provide more helpful error messages
     if (errorMessage.includes('validate address') || errorMessage.includes('address')) {
-      throw new Error(`Invalid wallet address. Please check that the ${params.payout_currency || 'payout'} address is correct and valid.`);
+      const addrErr = new Error(`Invalid wallet address. Please check that the ${params.payout_currency || 'payout'} address is correct and valid.`) as Error & { statusCode?: number };
+      addrErr.statusCode = response.status;
+      throw addrErr;
     }
-    
-    throw new Error(errorMessage);
+
+    const err = new Error(errorMessage) as Error & { statusCode?: number };
+    err.statusCode = response.status;
+    throw err;
   }
 
   return response.json();
@@ -222,6 +245,13 @@ export async function getPaymentStatus(paymentId: string, mode?: 'live' | 'sandb
     config = await getNowPaymentsConfig();
   }
 
+  paymentLogger.pollingRequest({
+    polling_base_url: config.baseUrl,
+    mode: config.mode,
+    api_key_prefix: config.apiKey.slice(0, 4),
+    payment_id_suffix: paymentLogger.maskPaymentId(paymentId),
+  });
+
   const response = await fetchGetWithRetry(
     `${config.baseUrl}/payment/${paymentId}`,
     { 'x-api-key': config.apiKey }
@@ -232,7 +262,14 @@ export async function getPaymentStatus(paymentId: string, mode?: 'live' | 'sandb
     throw new Error(`NOWPayments API error: ${error}`);
   }
 
-  return response.json();
+  const data = await response.json();
+  paymentLogger.providerPaymentSeen({
+    provider_payment_id_suffix: paymentLogger.maskPaymentId(paymentId),
+    provider_payment_status: data.payment_status ?? 'unknown',
+    provider_pay_address_masked: paymentLogger.maskAddress(data.pay_address ?? data.payin_address),
+    provider_pay_currency: data.pay_currency ?? 'unknown',
+  });
+  return data;
 }
 
 // Get available currencies

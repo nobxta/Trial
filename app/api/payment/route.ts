@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createPayment, getPaymentStatus, getExchangeLimits } from '@/lib/nowpayments';
+import { createPayment, getPaymentStatus, getEstimatedPrice } from '@/lib/nowpayments';
+import { getExchangeLimitsWithFallback, MIN_AMOUNT_BUFFER } from '@/lib/db-exchange-limits';
+import { getExchangeFeeSettings } from '@/lib/db-exchange-fees';
+import { applyFee } from '@/lib/pricing';
 import { isValidAssetNetworkId, getAssetNetworkById } from '@/lib/supportedAssets';
 import { getAuthUser } from '@/lib/auth';
 import { createOrderWithHistoryTransaction } from '@/lib/db-orders';
 import { validateExchangeRequest, validatePaymentRequest } from '@/lib/validation';
 import { getPaymentMode } from '@/lib/payment-mode';
 import { getSandboxCase } from '@/lib/payment-mode';
+import { getPayoutMode } from '@/lib/payout-mode';
 import type { SandboxCase } from '@/lib/sandbox-case';
 import { getPublicBaseUrl } from '@/lib/env';
+import { paymentLogger } from '@/lib/payment-logger';
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,6 +30,17 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+
+      // rate_type is required; must be exactly 'fixed' or 'floating' (accept 'float' as alias for 'floating')
+      const rateTypeRaw = body.rate_type;
+      if (rateTypeRaw !== 'fixed' && rateTypeRaw !== 'floating' && rateTypeRaw !== 'float') {
+        return NextResponse.json(
+          { error: 'rate_type is required and must be "fixed" or "floating"' },
+          { status: 400 }
+        );
+      }
+      const resolvedRateMode: 'fixed' | 'floating' = rateTypeRaw === 'fixed' ? 'fixed' : 'floating';
+      const isFixedRate = resolvedRateMode === 'fixed';
 
       // price_amount must be USD value of send amount (what user pays) — NOT receive amount
       const priceAmount = body.price_amount ?? body.expected_receive ?? 0;
@@ -56,11 +72,10 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Fetch real limits from NOWPayments API (required so we validate before calling createPayment)
-      const isFixedRate = body.rate_type === 'fixed';
+      // Use same limits source as UI (cache + API fallback) and apply buffer so provider accepts the amount
       let limits: { min_amount: number; max_amount?: number };
       try {
-        limits = await getExchangeLimits(sendAsset.id, receiveAsset.id, isFixedRate);
+        limits = await getExchangeLimitsWithFallback(sendAsset.id, receiveAsset.id, isFixedRate);
       } catch (limitsError: any) {
         console.warn('Failed to fetch exchange limits:', limitsError.message);
         return NextResponse.json(
@@ -72,12 +87,12 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Validate against min amount
-      if (sendAmount < limits.min_amount) {
+      const effectiveMin = limits.min_amount * (1 + MIN_AMOUNT_BUFFER);
+      if (sendAmount < effectiveMin) {
         return NextResponse.json(
           {
-            error: `Amount is below minimum. Minimum amount is ${limits.min_amount} ${sendAsset.symbol.toUpperCase()}`,
-            min_amount: limits.min_amount,
+            error: `Amount is below minimum. Minimum amount is ${effectiveMin.toFixed(8).replace(/\.?0+$/, '')} ${sendAsset.symbol.toUpperCase()}`,
+            min_amount: effectiveMin,
             currency: sendAsset.symbol.toUpperCase(),
           },
           { status: 400 }
@@ -96,18 +111,37 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Get current payment mode (LIVE or SANDBOX)
+      // Get current payment mode (LIVE or SANDBOX) and payout mode (manual = funds to balance, automatic = NOWPayments sends to user)
       const currentPaymentMode = await getPaymentMode();
-      
+      const payoutMode = await getPayoutMode();
+
+      // Backend fee % from DB (applied to receive amount)
+      const feeSettings = await getExchangeFeeSettings();
+      const feePercent = isFixedRate ? feeSettings.fixedFeePercent : feeSettings.floatingFeePercent;
+      // Backend-calculated expected receive: provider estimate then apply our fee (fee is deducted from output)
+      let expectedReceiveBackend: number;
+      try {
+        const estimatedFromProvider = await getEstimatedPrice(sendAmount, sendAsset.id, receiveAsset.id);
+        expectedReceiveBackend = applyFee(estimatedFromProvider, feePercent);
+      } catch (estimateErr: any) {
+        console.warn('Estimated price failed, using client expected_receive:', estimateErr?.message);
+        expectedReceiveBackend = parseFloat(body.expected_receive || '0') || 0;
+      }
+
       const paymentParams: any = {
         price_amount: parseFloat(priceAmount),
         price_currency: (body.price_currency || 'usd').toLowerCase(),
         pay_currency: body.send_asset.toLowerCase(),
         order_id: body.order_id,
         order_description: body.order_description || `Exchange ${body.send_amount} ${body.send_asset} to ${body.receive_asset}`,
-        payout_address: body.destination,
-        payout_currency: body.receive_asset.toLowerCase(),
+        is_fixed_rate: isFixedRate,
       };
+      // Automatic payout: include payout_address and payout_currency so NOWPayments sends converted funds to user.
+      // Manual payout: omit so funds remain in NOWPayments balance; admin pays user manually and marks order completed.
+      if (payoutMode === 'automatic') {
+        paymentParams.payout_address = body.destination;
+        paymentParams.payout_currency = body.receive_asset.toLowerCase();
+      }
 
       // Sandbox-specific: add case parameter from environment variable (ONLY in sandbox mode)
       let resolvedSandboxCase: SandboxCase | undefined;
@@ -137,40 +171,53 @@ export async function POST(request: NextRequest) {
 
       const payment = await createPayment(paymentParams);
 
+      paymentLogger.paymentCreated({
+        order_id: body.order_id || payment.order_id,
+        payment_id_suffix: paymentLogger.maskPaymentId(payment.payment_id),
+        ipn_callback_url_set: !!paymentParams.ipn_callback_url,
+        ipn_callback_url_used: paymentParams.ipn_callback_url ?? '',
+        mode: currentPaymentMode,
+      });
+
       const authUser = await getAuthUser();
       const userId = authUser ? authUser.userId : null;
 
-      // Calculate rate for validation (if possible)
-      const expectedReceive = parseFloat(body.expected_receive || '0');
-      let providerRate: number | undefined = undefined;
-      let rateDeviationPercent: number | undefined = undefined;
-      
-      if (sendAmount > 0 && expectedReceive > 0) {
-        providerRate = expectedReceive / sendAmount;
-        // TODO: Compare with market rate for sanity check
-        // For now, just store the rate
-      }
+      // Canonical amount to send: from provider (pay_amount) when present, else client send_amount
+      const providerPayAmount = payment.pay_amount != null ? Number(payment.pay_amount) : null;
+      const fromAmount = providerPayAmount ?? sendAmount;
+
+      let providerRate: number | undefined =
+        payment.pay_amount != null && payment.outcome_amount != null && payment.pay_amount > 0
+          ? Number(payment.outcome_amount) / Number(payment.pay_amount)
+          : fromAmount > 0 && expectedReceiveBackend > 0
+            ? expectedReceiveBackend / fromAmount
+            : undefined;
+
+      const rateMode: 'fixed' | 'floating' = resolvedRateMode;
 
       // Save order + status history in one DB transaction (no payment without order)
       const orderData = {
         orderId: body.order_id || payment.order_id,
         paymentId: payment.payment_id,
         paymentMode: currentPaymentMode,
+        payoutMode,
         sandboxCase: resolvedSandboxCase,
         internalStatus: 'NEW' as const,
         fromCurrency: body.send_asset.toUpperCase(),
-        fromAmount: sendAmount,
+        fromAmount,
         toCurrency: body.receive_asset.toUpperCase(),
-        toAmount: expectedReceive,
+        toAmount: expectedReceiveBackend,
         rateTimestamp: new Date().toISOString(),
+        providerRate: providerRate ?? undefined,
+        expectedReceive: expectedReceiveBackend,
+        rateMode,
+        providerRateLocked: isFixedRate,
+        providerPayAmount: providerPayAmount ?? undefined,
         ...(payment.purchase_id && { purchaseId: payment.purchase_id }),
         ...(body.send_network && { fromNetwork: body.send_network }),
         ...(payment.pay_address && { fromAddress: payment.pay_address }),
         ...(body.receive_network && { toNetwork: body.receive_network }),
         ...(body.destination && { toAddress: body.destination }),
-        ...(providerRate !== undefined && { providerRate }),
-        ...(expectedReceive !== undefined && { expectedReceive }),
-        ...(rateDeviationPercent !== undefined && { rateDeviationPercent }),
       };
       try {
         await createOrderWithHistoryTransaction(userId, orderData);
@@ -183,18 +230,21 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Add exchange-specific metadata
+      // Add exchange-specific metadata (use backend/provider values)
       const exchangeOrder = {
         ...payment,
         type: "exchange",
         send_asset: body.send_asset,
         send_network: body.send_network,
-        send_amount: body.send_amount,
+        send_amount: fromAmount,
         receive_asset: body.receive_asset,
         receive_network: body.receive_network,
-        expected_receive: body.expected_receive,
-        rate_type: body.rate_type || "fixed",
-        fee_percent: body.fee_percent,
+        expected_receive: expectedReceiveBackend,
+        rate_type: rateMode,
+        rate_mode: rateMode,
+        fee_percent: feePercent,
+        provider_pay_amount: providerPayAmount,
+        provider_rate_locked: isFixedRate,
         destination: body.destination,
         status: "awaiting_payment",
         expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 minutes for exchanges
@@ -260,6 +310,14 @@ export async function POST(request: NextRequest) {
       paymentParams.ipn_callback_url = `${publicBaseUrlPayment}/api/webhook/nowpayments`;
 
       const payment = await createPayment(paymentParams);
+
+      paymentLogger.paymentCreated({
+        order_id: body.order_id || payment.order_id,
+        payment_id_suffix: paymentLogger.maskPaymentId(payment.payment_id),
+        ipn_callback_url_set: !!paymentParams.ipn_callback_url,
+        ipn_callback_url_used: paymentParams.ipn_callback_url ?? '',
+        mode: currentPaymentMode,
+      });
 
       const authUser = await getAuthUser();
       const userId = authUser ? authUser.userId : null;
@@ -341,7 +399,47 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    
+
+    // NOWPayments: amount above maximum or limit exceeded (e.g. very large orders)
+    if (
+      errorMessage.toLowerCase().includes('maximum') ||
+      errorMessage.toLowerCase().includes('exceed') ||
+      errorMessage.toLowerCase().includes('limit') ||
+      errorMessage.toLowerCase().includes('too large')
+    ) {
+      return NextResponse.json(
+        {
+          error: errorMessage || 'Amount exceeds the maximum allowed for this currency pair. Please try a smaller amount.',
+          code: 'AMOUNT_MAX_ERROR',
+        },
+        { status: 400 }
+      );
+    }
+
+    // Pair not available / not convertible
+    if (
+      errorMessage.toLowerCase().includes('not convertable') ||
+      errorMessage.toLowerCase().includes('not supported') ||
+      errorMessage.toLowerCase().includes('not available')
+    ) {
+      return NextResponse.json(
+        { error: errorMessage || 'This currency pair is not available for exchange.' },
+        { status: 400 }
+      );
+    }
+
+    // Forward other provider/user-facing errors so the user sees the real reason (no stack traces or secrets)
+    const looksSafe =
+      errorMessage.length > 0 &&
+      errorMessage.length < 400 &&
+      !/api[_\s]?key|secret|token|password|env/i.test(errorMessage);
+    if (looksSafe) {
+      return NextResponse.json(
+        { error: errorMessage },
+        { status: typeof error.statusCode === 'number' && error.statusCode >= 400 && error.statusCode < 500 ? error.statusCode : 500 }
+      );
+    }
+
     return NextResponse.json(
       { error: 'Something went wrong. Please try again.' },
       { status: 500 }
@@ -350,8 +448,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  const searchParams = request.nextUrl.searchParams;
   try {
-    const searchParams = request.nextUrl.searchParams;
     const paymentId = searchParams.get('payment_id');
     const mode = searchParams.get('mode') as 'live' | 'sandbox' | null;
 
@@ -366,8 +464,21 @@ export async function GET(request: NextRequest) {
     const paymentMode = mode || await getPaymentMode();
     const payment = await getPaymentStatus(paymentId, paymentMode);
 
+    paymentLogger.paymentStatusPoll({
+      payment_id_suffix: paymentLogger.maskPaymentId(paymentId),
+      mode: paymentMode,
+      response_status: payment.payment_status ?? 'unknown',
+      ok: true,
+    });
+
     return NextResponse.json(payment);
   } catch (error: any) {
+    paymentLogger.paymentStatusPoll({
+      payment_id_suffix: paymentLogger.maskPaymentId(searchParams.get('payment_id') ?? undefined),
+      mode: searchParams.get('mode') ?? 'current',
+      response_status: 'error',
+      ok: false,
+    });
     console.error('Payment status error:', error);
     return NextResponse.json(
       { error: error.message || 'Failed to get payment status' },

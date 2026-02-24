@@ -2,6 +2,9 @@ import { supabaseAdmin } from './supabase';
 import { ExchangeLimits, getExchangeLimits as fetchExchangeLimitsFromAPI } from './nowpayments';
 import { getEnabledAssetNetworks } from './supportedAssets';
 
+/** Buffer above API min (e.g. 0.02 = 2%) so provider accepts the amount; applied in payment route and UI. */
+export const MIN_AMOUNT_BUFFER = 0.02;
+
 export interface ExchangeLimitRecord {
   currencyFrom: string;
   currencyTo: string;

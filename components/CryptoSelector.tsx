@@ -82,7 +82,7 @@ export default function CryptoSelector({
 
   // Get popular cryptos
   const popularCryptos = useMemo(() => {
-    return getPopularCryptos(6).filter(crypto => crypto.id !== excludeCryptoId);
+    return getPopularCryptos(7).filter(crypto => crypto.id !== excludeCryptoId);
   }, [excludeCryptoId]);
 
   // Get popular crypto IDs for filtering
@@ -114,16 +114,19 @@ export default function CryptoSelector({
     return priceData?.usd;
   }, [prices]);
 
-  // Calculate dropdown position
+  // Calculate dropdown position — always open toward bottom for better mobile/desktop usability
   const calculatePosition = useCallback(() => {
     if (!buttonRef.current) return null;
 
     const rect = buttonRef.current.getBoundingClientRect();
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
-    const minWidth = 400;
+    const isMobile = viewportWidth < 640;
+    const minWidth = isMobile ? Math.min(viewportWidth - 16, 360) : 400;
     const maxWidth = Math.min(minWidth, viewportWidth - 32);
     const gap = 8;
+    // Cap height so dropdown always fits when anchored to bottom
+    const dropdownHeight = Math.min(500, viewportHeight - 32);
     
     let left = rect.left;
     if (left + maxWidth > viewportWidth - 16) {
@@ -131,16 +134,10 @@ export default function CryptoSelector({
     }
     left = Math.max(16, left);
     
+    // Prefer opening below the button; if not enough space, anchor to viewport bottom (never open upward)
     let top = rect.bottom + gap;
-    const dropdownHeight = 500;
     if (top + dropdownHeight > viewportHeight - 16) {
-      const spaceAbove = rect.top;
-      const spaceBelow = viewportHeight - rect.bottom;
-      if (spaceAbove > spaceBelow && spaceAbove > 200) {
-        top = rect.top - dropdownHeight - gap;
-      } else {
-        top = Math.max(16, viewportHeight - dropdownHeight - 16);
-      }
+      top = Math.max(16, viewportHeight - dropdownHeight - 16);
     }
     
     return { top, left, width: maxWidth };
@@ -322,6 +319,7 @@ export default function CryptoSelector({
         left: `${dropdownPosition.left}px`,
         width: `${Math.min(dropdownPosition.width || 400, window.innerWidth - 32)}px`,
         maxHeight: `${Math.min(500, window.innerHeight - dropdownPosition.top - 16)}px`,
+        minHeight: 0,
       }}
     >
       {/* Glassmorphism Container */}
@@ -435,6 +433,7 @@ export default function CryptoSelector({
               const minWidth = isMobile ? Math.min(viewportWidth - 16, 360) : 400;
               const maxWidth = Math.min(minWidth, viewportWidth - 32);
               const gap = 8;
+              const dropdownHeight = Math.min(500, viewportHeight - 32);
               
               let left = rect.left;
               if (left + maxWidth > viewportWidth - 16) {
@@ -442,16 +441,10 @@ export default function CryptoSelector({
               }
               left = Math.max(16, left);
               
+              // Always open toward bottom: below button, or anchored to viewport bottom (never upward)
               let top = rect.bottom + gap;
-              const dropdownHeight = 500;
               if (top + dropdownHeight > viewportHeight - 16) {
-                const spaceAbove = rect.top;
-                const spaceBelow = viewportHeight - rect.bottom;
-                if (spaceAbove > spaceBelow && spaceAbove > 200) {
-                  top = rect.top - dropdownHeight - gap;
-                } else {
-                  top = Math.max(16, viewportHeight - dropdownHeight - 16);
-                }
+                top = Math.max(16, viewportHeight - dropdownHeight - 16);
               }
               
               const position = { top, left, width: maxWidth };
@@ -468,7 +461,7 @@ export default function CryptoSelector({
         <CryptoIcon 
           symbol={selectedCrypto.symbol} 
           imageUrl={selectedCrypto.imageUrl}
-          className="w-6 h-6 flex-shrink-0" 
+          className="w-7 h-7 sm:w-8 sm:h-8 flex-shrink-0" 
         />
         <div className="flex flex-col items-start min-w-0">
           <span className="font-medium text-sm">{selectedCrypto.symbol}</span>

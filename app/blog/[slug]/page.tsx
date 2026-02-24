@@ -128,14 +128,14 @@ export default function BlogPostPage({ params }: BlogPostPageProps) {
 
         {/* Article Content */}
         <div className="prose prose-invert prose-lg max-w-none">
-          <div className="glass-panel border border-white/5 rounded-xl p-8 md:p-12">
+          <div className="glass-panel border border-white/5 rounded-xl p-8 md:p-12 shadow-xl animate-fade-in-up">
             <div className="text-neutral-300 leading-relaxed space-y-6">
               <p className="text-xl text-neutral-200 font-medium mb-6">
                 {post.excerpt}
               </p>
-              
-              {/* Render formatted content */}
-              <ContentRenderer content={post.content || ""} />
+
+              {/* Render formatted content with icons, tables, and animations */}
+              <ContentRenderer content={post.content || ""} animated />
               
               {/* Source attribution if available */}
               {post.source && (

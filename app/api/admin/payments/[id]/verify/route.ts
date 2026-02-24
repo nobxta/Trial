@@ -45,7 +45,10 @@ export async function POST(
       'refunded': 'EXPIRED',
     };
 
-    const mappedStatus = statusMap[paymentStatus.payment_status?.toLowerCase()] || order.status;
+    let mappedStatus = statusMap[paymentStatus.payment_status?.toLowerCase()] || order.status;
+    if (order.payout_mode === 'manual' && mappedStatus === 'DONE') {
+      mappedStatus = 'PAYMENT_CONFIRMED';
+    }
 
     if (mappedStatus !== order.status) {
       await updateOrderStatus(order.order_id, mappedStatus, undefined, {

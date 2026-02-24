@@ -1,106 +1,173 @@
 "use client";
 
-import { Wallet, Hourglass, ArrowRightLeft, CheckCircle2, Clock } from "lucide-react";
-import { getTimelineStepSublabel } from "@/lib/status-mapping";
+import { Wallet, Search, Repeat, Check, Clock, AlertCircle } from "lucide-react";
 
 interface ProgressTimelineProps {
-  currentStep: number;
-  isExpired?: boolean;
-  /** When true, active step uses vibrant green instead of blue to signal positive progress */
-  isPaymentReceived?: boolean;
-  /** When provided, active step shows dynamic sublabel (e.g. "Waiting for network confirmations...") */
+  currentStep?: number;
   internalStatus?: string | null;
+  isExpired?: boolean;
+  isPaymentReceived?: boolean;
 }
 
-// Crypto-native labels. When a step is completed, show past tense (professional "done" state).
-const STEPS: { id: number; label: string; completedLabel: string; icon: typeof Wallet }[] = [
-  { id: 0, label: "Awaiting deposit", completedLabel: "Deposit Sent", icon: Wallet },
-  { id: 1, label: "Confirming on Chain", completedLabel: "Payment Confirmed", icon: Hourglass },
-  { id: 2, label: "Swap in Progress", completedLabel: "Assets Swapped", icon: ArrowRightLeft },
-  { id: 3, label: "Completed", completedLabel: "Completed", icon: CheckCircle2 },
+const STEPS = [
+  { 
+    key: "awaiting", 
+    label: "Awaiting Deposit", 
+    desc: "Waiting for funds",
+    icon: Wallet,
+  },
+  { 
+    key: "confirming", 
+    label: "Confirming", 
+    desc: "Network verification",
+    icon: Search,
+  },
+  { 
+    key: "exchanging", 
+    label: "Exchanging", 
+    desc: "Processing swap",
+    icon: Repeat,
+  },
+  { 
+    key: "completed", 
+    label: "Completed", 
+    desc: "Funds sent",
+    icon: Check,
+  },
 ];
 
+function getStepFromStatus(internalStatus: string | null): number {
+  if (!internalStatus) return 0;
+  switch (internalStatus) {
+    case 'NEW':
+    case 'AWAITING_DEPOSIT':
+      return 0;
+    case 'CONFIRMING':
+      return 1;
+    case 'PAYMENT_CONFIRMED':
+    case 'PROCESSING_BY_PROVIDER':
+    case 'MANUAL_REVIEW':
+      return 2;
+    case 'DONE':
+      return 3;
+    case 'FAILED':
+    case 'EXPIRED':
+      return -1;
+    default:
+      return 0;
+  }
+}
+
 export default function ProgressTimeline({
-  currentStep,
-  isExpired = false,
-  isPaymentReceived = false,
+  currentStep: currentStepProp,
   internalStatus = null,
+  isExpired = false,
 }: ProgressTimelineProps) {
-  const stepIndex = Math.min(Math.max(0, currentStep), 3);
+  const activeStep = isExpired ? -1 : Math.min(
+    Math.max(0, currentStepProp ?? getStepFromStatus(internalStatus)),
+    3
+  );
 
-  const activeStepStyle = isPaymentReceived
-    ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-400 shadow-[0_0_24px_rgba(34,197,94,0.35)]"
-    : "border-blue-500/50 bg-blue-500/20 text-blue-400 shadow-[0_0_24px_rgba(59,130,246,0.35)]";
-
-  const activeLabelStyle = isPaymentReceived ? "text-emerald-400" : "text-blue-400";
+  const displayStep = isExpired ? 0 : activeStep + 1;
 
   return (
-    <div className="rounded-lg border border-white/5 bg-[#12161f] p-6 sm:p-8 overflow-visible">
-      <div className="flex items-center justify-center w-full overflow-visible">
-        <div className="flex items-center justify-between gap-0 sm:gap-4 w-full max-w-2xl overflow-visible">
-          {STEPS.map((step, index) => {
-            const Icon = step.icon;
-            const isActive = !isExpired && stepIndex === index;
-            const isCompleted = !isExpired && stepIndex > index;
-            const isLast = index === STEPS.length - 1;
-            const isExpiredAtFirst = isExpired && index === 0;
-            const label = isExpiredAtFirst ? "Expired" : isCompleted ? step.completedLabel : step.label;
-            const activeSublabel =
-              isActive && internalStatus != null
-                ? getTimelineStepSublabel(internalStatus, index)
-                : null;
+    <div className="rounded-[20px] border border-white/10 bg-[#12161F] p-6 shadow-[0_4px_24px_rgba(0,0,0,0.2)]">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="text-white font-bold text-base" style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+          Transaction Progress
+        </h3>
+        <div className="flex items-center gap-2">
+          <div className={`w-2 h-2 rounded ${isExpired ? 'bg-[#EF4444]' : 'bg-[#22C55E]'}`} />
+          <span className="text-[#94A3B8] text-[13px] font-medium" style={{ fontFamily: 'Inter, sans-serif' }}>
+            {isExpired ? 'Expired' : `Step ${displayStep} of 4`}
+          </span>
+        </div>
+      </div>
 
-            return (
-              <div key={step.id} className="flex flex-1 items-center min-w-0 overflow-visible">
-                <div className="flex flex-col items-center flex-1 min-w-0 overflow-visible">
-                  <div
-                    className={`relative w-12 h-12 rounded-full flex items-center justify-center border transition-all ${
-                      isActive ? "animate-pulse" : ""
-                    } ${
-                      isExpiredAtFirst
-                        ? "border-slate-500/40 bg-slate-500/10 text-slate-500"
-                        : isActive
-                        ? activeStepStyle
-                        : isCompleted
-                        ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-400"
-                        : "border-white/10 bg-white/5 text-slate-500/80"
-                    }`}
-                  >
-                    {isExpiredAtFirst ? (
-                      <Clock className="w-6 h-6 text-slate-500" />
-                    ) : isCompleted ? (
-                      <CheckCircle2 className="w-6 h-6 text-emerald-400" />
-                    ) : (
-                      <Icon className="w-6 h-6" />
-                    )}
-                  </div>
-                  <span
-                    className={`mt-2 text-[10px] sm:text-xs font-medium text-center leading-tight max-w-[80px] sm:max-w-none ${
-                      isExpiredAtFirst
-                        ? "text-slate-500"
-                        : isActive
-                        ? activeLabelStyle
-                        : isCompleted
-                        ? "text-emerald-500"
-                        : "text-slate-500"
-                    }`}
-                    title={activeSublabel ? `${label} — ${activeSublabel}` : label}
-                  >
-                    {label}
-                  </span>
-                  {activeSublabel != null && activeSublabel !== "" && (
-                    <span className="mt-0.5 text-[9px] sm:text-[10px] text-slate-500 text-center max-w-[100px] sm:max-w-none">
-                      {activeSublabel}
-                    </span>
+      {/* Timeline Steps */}
+      <div className="flex items-start">
+        {STEPS.map((step, index) => {
+          const StepIcon = step.icon;
+          const isActive = !isExpired && activeStep === index;
+          const isCompleted = !isExpired && activeStep > index;
+          const isPending = !isExpired && activeStep < index;
+          const isExpiredState = isExpired;
+
+          return (
+            <div key={step.key} className="flex items-start flex-1">
+              {/* Step Column */}
+              <div className="flex flex-col items-center flex-1">
+                {/* Circle with Icon */}
+                <div
+                  className={`
+                    w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300
+                    ${isCompleted 
+                      ? "bg-gradient-to-br from-[#22C55E] to-[#4ADE80] shadow-[0_0_20px_rgba(34,197,94,0.4)]" 
+                      : isActive 
+                        ? "bg-gradient-to-br from-[#22C55E] to-[#4ADE80] shadow-[0_0_20px_rgba(34,197,94,0.4)]"
+                        : isExpiredState && index === 0
+                          ? "bg-[#1A1F2B] border-2 border-[#EF4444]"
+                          : "bg-[#1A1F2B] border-2 border-[#1E2533]"
+                    }
+                  `}
+                >
+                  {isExpiredState && index === 0 ? (
+                    <Clock className="w-[22px] h-[22px] text-[#EF4444]" />
+                  ) : isCompleted || isActive ? (
+                    <StepIcon className="w-[22px] h-[22px] text-white" />
+                  ) : (
+                    <StepIcon className="w-[22px] h-[22px] text-[#64748B]" />
                   )}
                 </div>
-                {!isLast && (
-                  <div className="flex-1 h-[1px] min-w-[8px] sm:min-w-[16px] mx-1 sm:mx-2 bg-slate-600/60 self-start mt-6" />
-                )}
+
+                {/* Labels */}
+                <div className="flex flex-col items-center mt-3 gap-1">
+                  <span
+                    className={`text-[13px] font-semibold text-center`}
+                    style={{ 
+                      fontFamily: 'Inter, sans-serif',
+                      color: isExpiredState && index === 0
+                        ? '#EF4444'
+                        : isCompleted || isActive 
+                          ? '#FFFFFF' 
+                          : '#64748B'
+                    }}
+                  >
+                    {isExpiredState && index === 0 ? 'Expired' : step.label}
+                  </span>
+                  <span
+                    className="text-[11px] text-center"
+                    style={{ 
+                      fontFamily: 'Inter, sans-serif',
+                      color: isExpiredState && index === 0 
+                        ? '#EF4444' 
+                        : isActive 
+                          ? '#64748B' 
+                          : '#475569'
+                    }}
+                  >
+                    {isExpiredState && index === 0 ? 'Time limit reached' : step.desc}
+                  </span>
+                </div>
               </div>
-            );
-          })}
-        </div>
+
+              {/* Connector Line */}
+              {index < STEPS.length - 1 && (
+                <div
+                  className="w-20 h-1 rounded-sm mt-[22px] mx-1"
+                  style={{
+                    background: isCompleted 
+                      ? 'linear-gradient(90deg, #22C55E 0%, #1E2533 100%)' 
+                      : isActive
+                        ? 'linear-gradient(90deg, #22C55E 0%, #1E2533 50%)'
+                        : '#1E2533'
+                  }}
+                />
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

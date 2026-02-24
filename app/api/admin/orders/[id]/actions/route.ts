@@ -197,25 +197,29 @@ export async function POST(
           );
         }
 
+        const paymentIdStr = String(currentOrder.payment_id);
         const previousState = {
           internal_status: currentOrder.internal_status || currentOrder.status,
           provider_status: currentOrder.provider_status,
-          payment_id: currentOrder.payment_id,
+          payment_id: paymentIdStr,
         };
 
         // Use order's payment_mode; if null (legacy), dual-probe sandbox then live
         let paymentStatus: { payment_status?: string };
         const resyncMode = currentOrder.payment_mode && currentOrder.payment_mode !== '' ? currentOrder.payment_mode : undefined;
         if (resyncMode) {
-          paymentStatus = await getPaymentStatus(currentOrder.payment_id, resyncMode);
+          paymentStatus = await getPaymentStatus(paymentIdStr, resyncMode);
         } else {
           try {
-            paymentStatus = await getPaymentStatus(currentOrder.payment_id, 'sandbox');
+            paymentStatus = await getPaymentStatus(paymentIdStr, 'sandbox');
           } catch {
-            paymentStatus = await getPaymentStatus(currentOrder.payment_id, 'live');
+            paymentStatus = await getPaymentStatus(paymentIdStr, 'live');
           }
         }
-        const mappedStatus = mapProviderStatusToInternal(paymentStatus.payment_status) as InternalStatus;
+        let mappedStatus = mapProviderStatusToInternal(paymentStatus.payment_status) as InternalStatus;
+        if (currentOrder.payout_mode === 'manual' && mappedStatus === 'DONE') {
+          mappedStatus = 'PAYMENT_CONFIRMED';
+        }
 
         const updatedOrder = await updateOrderStatus(params.id, mappedStatus, {
           providerStatus: paymentStatus.payment_status,
@@ -231,16 +235,24 @@ export async function POST(
           );
         }
 
+        const statusChanged = (currentOrder.internal_status || currentOrder.status) !== updatedOrder.internalStatus;
+        const resyncNotificationStatuses: InternalStatus[] = ['CONFIRMING', 'PAYMENT_CONFIRMED', 'PROCESSING_BY_PROVIDER', 'DONE', 'EXPIRED'];
+        if (statusChanged && resyncNotificationStatuses.includes(mappedStatus)) {
+          notifyOrderStatus(currentOrder.user_id, params.id, mappedStatus.toLowerCase(), request).catch((err) => {
+            console.error('[Resync] notifyOrderStatus failed:', err?.message ?? err);
+          });
+        }
+
         await logAdminAction(admin.adminId, 'resync_order', 'order', {
           resourceId: params.id,
           previousState,
-          newState: { 
+          newState: {
             internal_status: updatedOrder.internalStatus,
             provider_status: paymentStatus.payment_status,
-            payment_id: currentOrder.payment_id,
+            payment_id: paymentIdStr,
           },
-          details: { 
-            payment_id: currentOrder.payment_id,
+          details: {
+            payment_id: paymentIdStr,
             payment_status: paymentStatus.payment_status,
             mapped_status: mappedStatus,
           },
@@ -248,8 +260,8 @@ export async function POST(
           userAgent,
         });
 
-        return NextResponse.json({ 
-          success: true, 
+        return NextResponse.json({
+          success: true,
           message: 'Order status resynced',
           paymentStatus: paymentStatus.payment_status,
           orderStatus: updatedOrder.internalStatus,

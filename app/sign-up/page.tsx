@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { Loader2, CheckCircle2, Mail } from "lucide-react";
+import { Loader2, CheckCircle2, Mail, Eye, EyeOff } from "lucide-react";
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -15,11 +15,19 @@ export default function SignUpPage() {
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
   const [verificationUrl, setVerificationUrl] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const emailFilled = email.trim().length > 0;
+  const passwordFilled = password.length >= 6;
+  const showConfirmField = emailFilled && passwordFilled;
+  const canSubmit = showConfirmField ? password === confirmPassword && confirmPassword.length >= 6 : false;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
+    if (!showConfirmField) return;
     if (password !== confirmPassword) {
       setError("Passwords do not match");
       return;
@@ -99,7 +107,7 @@ export default function SignUpPage() {
               Check your email
             </h1>
             <p className="text-sm text-neutral-400 mb-6 leading-relaxed">
-              We&apos;ve sent a verification link to <strong className="text-white font-semibold">{email}</strong>. Please click the link to verify your account.
+              We&apos;ve sent a verification link to <strong className="text-white font-semibold">{email}</strong>. Click the link to verify your account — you&apos;ll need to verify before you can sign in.
             </p>
             {verificationUrl && (
               <div className="mb-6 p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 animate-fade-in">
@@ -194,40 +202,64 @@ export default function SignUpPage() {
               <div className="relative group">
                 <input
                   id="password"
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   minLength={6}
-                  className="w-full px-4 py-3.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-300 hover:bg-white/7 hover:border-white/15"
+                  className="w-full px-4 py-3.5 pr-12 rounded-xl bg-white/5 border border-white/10 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-300 hover:bg-white/7 hover:border-white/15"
                   placeholder="••••••••"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((p) => !p)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10 transition-colors"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
                 <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-blue-500/0 via-blue-500/0 to-purple-500/0 group-focus-within:from-blue-500/10 group-focus-within:via-blue-500/5 group-focus-within:to-purple-500/10 opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 pointer-events-none -z-10 blur-xl"></div>
               </div>
+              {password.length > 0 && password.length < 6 && (
+                <p className="mt-1.5 text-xs text-amber-400/90">At least 6 characters</p>
+              )}
             </div>
 
-            <div className="animate-fade-in delay-300">
-              <label htmlFor="confirmPassword" className="block text-sm font-semibold text-neutral-200 mb-2">
-                Confirm Password
-              </label>
-              <div className="relative group">
-                <input
-                  id="confirmPassword"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
-                  minLength={6}
-                  className="w-full px-4 py-3.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-300 hover:bg-white/7 hover:border-white/15"
-                  placeholder="••••••••"
-                />
-                <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-blue-500/0 via-blue-500/0 to-purple-500/0 group-focus-within:from-blue-500/10 group-focus-within:via-blue-500/5 group-focus-within:to-purple-500/10 opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 pointer-events-none -z-10 blur-xl"></div>
+            {showConfirmField && (
+              <div className="animate-fade-in delay-300">
+                <label htmlFor="confirmPassword" className="block text-sm font-semibold text-neutral-200 mb-2">
+                  Confirm Password
+                </label>
+                <div className="relative group">
+                  <input
+                    id="confirmPassword"
+                    type={showConfirmPassword ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required={showConfirmField}
+                    minLength={6}
+                    className="w-full px-4 py-3.5 pr-12 rounded-xl bg-white/5 border border-white/10 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-300 hover:bg-white/7 hover:border-white/15"
+                    placeholder="Re-enter password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword((p) => !p)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10 transition-colors"
+                    aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                  <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-blue-500/0 via-blue-500/0 to-purple-500/0 group-focus-within:from-blue-500/10 group-focus-within:via-blue-500/5 group-focus-within:to-purple-500/10 opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 pointer-events-none -z-10 blur-xl"></div>
+                </div>
+                {confirmPassword.length > 0 && password !== confirmPassword && (
+                  <p className="mt-1.5 text-xs text-amber-400/90">Passwords don&apos;t match</p>
+                )}
               </div>
-            </div>
+            )}
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !showConfirmField || !canSubmit}
               className="w-full py-3.5 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white font-semibold transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-blue-500/30 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:hover:shadow-none flex items-center justify-center gap-2 relative overflow-hidden group animate-fade-in delay-400"
             >
               {loading ? (

@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { ChevronDown } from "lucide-react";
+import { useState } from "react";
+import { Plus } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 
 interface FAQItem {
   id: number;
@@ -11,71 +13,45 @@ interface FAQItem {
 
 export default function FAQ() {
   const [openId, setOpenId] = useState<number | null>(null);
-  const [visibleItems, setVisibleItems] = useState<Set<number>>(new Set());
-  const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   const faqs: FAQItem[] = [
     {
       id: 1,
-      question: "What is the difference between Fixed and Floating rate?",
+      question: "How can I track my order?",
       answer:
-        "Fixed rate (1.0% fee) locks in the exchange rate at the time of order creation, ensuring you receive exactly the amount shown. Floating rate (0.5% fee) uses the market rate at the time of exchange completion, which may result in slightly more or less than estimated.",
+        "Use your order ID from the confirmation page or email to track status in real time. Most exchanges complete within 10–30 minutes depending on network congestion.",
     },
     {
       id: 2,
-      question: "Do I need to complete KYC verification?",
+      question: "Why can I trust you?",
       answer:
-        "No, KYC is not required for standard exchange limits. Our platform allows you to exchange cryptocurrencies without registration or identity verification, maintaining your privacy while using our service.",
+        "We use secure, non-custodial swaps and display transparent rates and fees before you confirm. No registration or KYC is required for standard limits, and we’ve served thousands of users.",
     },
     {
       id: 3,
-      question: "How long does an exchange take?",
+      question: "Do you have hidden fees?",
       answer:
-        "Most exchanges complete within 10-30 minutes. The exact time depends on blockchain network congestion and confirmation requirements. You can track your order status in real-time using your order ID.",
+        "No. You see the exchange rate and our fee (fixed or floating) before you confirm. Blockchain network fees are separate and are shown in the order summary.",
     },
     {
       id: 4,
-      question: "Are there network fees?",
+      question: "What is the difference between Fixed and Floating rate?",
       answer:
-        "Yes, blockchain network fees apply and are separate from our exchange fee. Network fees are paid to miners/validators and vary based on network congestion. Estimated network fees are shown before you confirm your exchange.",
+        "Fixed rate (1.0% fee) locks in the exchange rate at the time of order creation. Floating rate (0.5% fee) uses the market rate at completion and may vary slightly.",
     },
     {
       id: 5,
-      question: "What happens if my transaction fails?",
+      question: "How long does an exchange take?",
       answer:
-        "If a transaction fails due to network issues or insufficient funds, your sent cryptocurrency will be automatically refunded to your original address. Refunds typically process within 24-48 hours. Contact support if you need assistance.",
+        "Most exchanges complete within 10–30 minutes. Exact time depends on blockchain confirmations. Track your order in real time using your order ID.",
     },
     {
       id: 6,
-      question: "How can I get support?",
+      question: "What happens if my transaction fails?",
       answer:
-        "You can reach our support team through the support page, email, or live chat. We're available 24/7 to assist with any questions or issues. Include your order ID for faster assistance.",
+        "If a transaction fails, your sent cryptocurrency is refunded to your original address, typically within 24–48 hours. Contact support with your order ID if you need help.",
     },
   ];
-
-  useEffect(() => {
-    const observers = itemRefs.current.map((ref, index) => {
-      if (!ref) return null;
-      
-      const observer = new IntersectionObserver(
-        (entries) => {
-          entries.forEach((entry) => {
-            if (entry.isIntersecting) {
-              setVisibleItems((prev) => new Set([...prev, index]));
-            }
-          });
-        },
-        { threshold: 0.1 }
-      );
-      
-      observer.observe(ref);
-      return observer;
-    });
-
-    return () => {
-      observers.forEach((obs) => obs?.disconnect());
-    };
-  }, []);
 
   const toggleFAQ = (id: number) => {
     setOpenId(openId === id ? null : id);
@@ -86,39 +62,62 @@ export default function FAQ() {
       {faqs.map((faq, index) => (
         <div
           key={faq.id}
-          ref={(el) => { itemRefs.current[index] = el; }}
-          className={`border-b border-white/5 transition-all duration-500 ${
-            visibleItems.has(index) ? "scroll-fade-in visible" : "scroll-fade-in"
-          }`}
-          style={{ animationDelay: `${index * 0.1}s` }}
+          className="border-b border-white/10 last:border-b-0"
         >
-          <button
-            onClick={() => toggleFAQ(faq.id)}
-            className="w-full flex items-center justify-between py-4 sm:py-5 text-left group"
-          >
-            <h4 className="text-sm sm:text-base font-medium text-white group-hover:text-blue-400 transition-colors pr-4">
-              {faq.question}
-            </h4>
-            <ChevronDown
-              className={`w-4 h-4 sm:w-5 sm:h-5 text-neutral-400 flex-shrink-0 transition-transform duration-300 ${
-                openId === faq.id ? "rotate-180 text-blue-400" : ""
-              }`}
-            />
-          </button>
           <div
-            className={`overflow-hidden transition-all duration-300 ease-in-out ${
-              openId === faq.id ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
+            className="flex items-center gap-4 sm:gap-6 py-4 sm:py-5 w-full text-left"
+            style={{ animationDelay: `${index * 0.05}s` }}
+          >
+            <span className="text-2xl sm:text-3xl font-bold text-white tabular-nums flex-shrink-0 w-8 sm:w-10">
+              {index + 1}
+            </span>
+            <button
+              onClick={() => toggleFAQ(faq.id)}
+              className="flex-1 min-w-0 flex items-center justify-between gap-4 group"
+            >
+              <h4 className="text-sm sm:text-base font-medium text-white/95 group-hover:text-white transition-colors text-left">
+                {faq.question}
+              </h4>
+              <span
+                className="flex-shrink-0 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#2196F3] flex items-center justify-center text-white transition-transform duration-300 hover:bg-blue-400"
+                aria-label={openId === faq.id ? "Collapse" : "Expand"}
+              >
+                <Plus
+                  className={`w-4 h-4 transition-transform duration-300 ${
+                    openId === faq.id ? "rotate-45" : ""
+                  }`}
+                />
+              </span>
+            </button>
+          </div>
+          <div
+            className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${
+              openId === faq.id ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
             }`}
           >
-            <div className="pb-4 sm:pb-5">
-              <p className="text-xs sm:text-sm text-neutral-400 leading-relaxed">
-                {faq.answer}
-              </p>
+            <div className="overflow-hidden">
+              <div className="pl-12 sm:pl-14 pb-4 sm:pb-5 pr-4">
+                <p
+                  className={`text-xs sm:text-sm leading-relaxed transition-colors duration-300 ${
+                    openId === faq.id ? "text-sky-400/95" : "text-neutral-400"
+                  }`}
+                >
+                  {faq.answer}
+                </p>
+              </div>
             </div>
           </div>
         </div>
       ))}
+      <div className="pt-6 flex justify-end">
+        <Link
+          href="/faq"
+          className="inline-flex items-center gap-2 text-[#2196F3] hover:text-blue-400 transition-colors text-sm font-medium"
+        >
+          Go to page FAQ
+          <ArrowRight className="w-4 h-4" />
+        </Link>
+      </div>
     </div>
   );
 }
-

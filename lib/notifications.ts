@@ -1,8 +1,10 @@
 import { getUserWithPreferences } from './db';
+import { getOrderByOrderId } from './db-orders';
 import { sendGenericEmail } from './email';
 import { getOrderStatusEmailTemplate } from './email-template';
 import { getEmailSetting } from './email-settings';
 import { tryClaimIdempotency } from './idempotency';
+import { paymentLogger } from './payment-logger';
 import { NextRequest } from 'next/server';
 
 export type NotificationType = 
@@ -83,9 +85,31 @@ export async function sendNotification(
 }
 
 /**
+ * Send order status email to a specific address (guest order notification_email).
+ * Respects order_notifications_enabled admin setting.
+ */
+async function sendOrderStatusEmailTo(
+  toEmail: string,
+  orderId: string,
+  status: string,
+  orderLink: string,
+  request?: NextRequest
+): Promise<boolean> {
+  const orderNotificationsEnabled = await getEmailSetting('order_notifications_enabled', 'true');
+  if (orderNotificationsEnabled !== 'true') {
+    console.log('📧 Order status email skipped: order_notifications_enabled is false (Admin → Settings → Email)');
+    return true;
+  }
+  const { text, html } = getOrderStatusEmailTemplate(orderId, status, orderLink);
+  const emailSubject = `Order ${orderId} - Status Update`;
+  return sendGenericEmail(toEmail, emailSubject, html, text, 'TRANSACTIONAL', request);
+}
+
+/**
  * Send order status notification
  * Idempotency: Atomic tryClaimIdempotency — only the caller that claims may run side effects.
- * Guard: Anonymous orders (null userId) skip notification without querying DB.
+ * - Logged-in user: send to user account email (if notifications enabled, email verified).
+ * - Guest order: if order has notification_email from order-page subscribe, send to that address.
  */
 export async function notifyOrderStatus(
   userId: string | null,
@@ -93,38 +117,80 @@ export async function notifyOrderStatus(
   status: string,
   request?: NextRequest
 ): Promise<boolean> {
-  // Guard: anonymous/guest orders have no user — no email (only order page / track by order ID)
-  if (userId == null || userId === '') {
-    console.log('📧 Order status email skipped: guest order (no userId)');
-    return true;
-  }
-
   const normalizedStatus = status.toUpperCase();
   const idempotencyKey = `order:${orderId}:status:${normalizedStatus}`;
   const scope = 'order_status_email';
 
-  // Atomic claim: only one concurrent caller gets true; others exit immediately
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const orderLink = `${baseUrl}/order/${orderId}`;
+
+  // Logged-in user: send to user account
+  if (userId != null && userId !== '') {
+    const claimed = await tryClaimIdempotency(scope, idempotencyKey);
+    if (!claimed) {
+      console.log(`⏭️  Order status email skipped (idempotency): ${orderId} - ${normalizedStatus}`);
+      return true;
+    }
+    console.log(`📧 Sending order status email (claimed): ${orderId} - ${normalizedStatus}`);
+    paymentLogger.emailTriggeredForOrder({ order_id: orderId, status: normalizedStatus });
+    try {
+      const ok = await sendNotification(
+        userId,
+        {
+          type: 'order_status',
+          title: `Order ${orderId} - ${status}`,
+          message: `Your order status has been updated.`,
+          link: orderLink,
+        },
+        request
+      );
+      paymentLogger.emailAttempt({ order_id: orderId, status: normalizedStatus, success: ok });
+      return ok;
+    } catch (err: any) {
+      paymentLogger.emailAttempt({
+        order_id: orderId,
+        status: normalizedStatus,
+        success: false,
+        error: err?.message ?? String(err),
+      });
+      throw err;
+    }
+  }
+
+  // Guest order: send to order.notification_email if set (order-page subscribe)
+  const order = await getOrderByOrderId(orderId);
+  const notificationEmail = order?.notificationEmail?.trim();
+  if (!notificationEmail) {
+    console.log('📧 Order status email skipped: guest order (no userId, no notification_email)');
+    return true;
+  }
+
   const claimed = await tryClaimIdempotency(scope, idempotencyKey);
   if (!claimed) {
     console.log(`⏭️  Order status email skipped (idempotency): ${orderId} - ${normalizedStatus}`);
     return true;
   }
-
-  console.log(`📧 Sending order status email (claimed): ${orderId} - ${normalizedStatus}`);
-
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-  const orderLink = `${baseUrl}/order/${orderId}`;
-
-  return sendNotification(
-    userId,
-    {
-      type: 'order_status',
-      title: `Order ${orderId} - ${status}`,
-      message: `Your order status has been updated.`,
-      link: orderLink,
-    },
-    request
-  );
+  console.log(`📧 Sending order status email to notification_email (claimed): ${orderId} - ${normalizedStatus}`);
+  paymentLogger.emailTriggeredForOrder({ order_id: orderId, status: normalizedStatus });
+  try {
+    const ok = await sendOrderStatusEmailTo(
+      notificationEmail,
+      orderId,
+      status,
+      orderLink,
+      request
+    );
+    paymentLogger.emailAttempt({ order_id: orderId, status: normalizedStatus, success: ok });
+    return ok;
+  } catch (err: any) {
+    paymentLogger.emailAttempt({
+      order_id: orderId,
+      status: normalizedStatus,
+      success: false,
+      error: err?.message ?? String(err),
+    });
+    throw err;
+  }
 }
 
 /**

@@ -56,7 +56,10 @@ export async function POST(
     const alreadyProcessed = await checkWebhookIdempotency(webhook.payment_id, webhook.payment_status);
     
     // Map status
-    const mappedStatus = mapPaymentStatusToOrderStatus(webhook.payment_status) as InternalStatus;
+    let mappedStatus = mapPaymentStatusToOrderStatus(webhook.payment_status) as InternalStatus;
+    if (order.payoutMode === 'manual' && mappedStatus === 'DONE') {
+      mappedStatus = 'PAYMENT_CONFIRMED';
+    }
 
     // Update order status (idempotency is handled in updateOrderStatus)
     const previousState = { status: order.status };

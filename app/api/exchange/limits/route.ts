@@ -117,28 +117,60 @@ export async function GET(request: NextRequest) {
         last_updated: cachedLimits?.updatedAt,
       });
     } catch (error: any) {
-      // API call failed
-      console.error('Failed to fetch exchange limits:', error);
-      
+      // If we have cached limits (even stale), return them so the UI keeps working
+      if (cachedLimits) {
+        return NextResponse.json({
+          success: true,
+          limits: {
+            min_amount: cachedLimits.minAmount,
+            max_amount: cachedLimits.maxAmount ?? undefined,
+            min_amount_fiat: cachedLimits.minAmountFiat ?? undefined,
+            max_amount_fiat: cachedLimits.maxAmountFiat ?? undefined,
+          },
+          cached: true,
+          stale: true,
+          last_updated: cachedLimits.updatedAt,
+          api_unavailable: true,
+        });
+      }
+
+      // No cache - API call failed; log with clearer message for network errors
+      const msg = error?.message || '';
+      const isNetworkError = msg.includes('fetch failed') || msg.includes('ECONNREFUSED') || msg.includes('ETIMEDOUT') || msg.includes('ENOTFOUND');
+      if (isNetworkError) {
+        console.error('Exchange limits API error (network):', msg);
+      } else {
+        console.error('Failed to fetch exchange limits:', error);
+      }
+
       // Check if this is an unsupported currency pair (400 from NOWPayments)
       // or a client error (400-499) - return 400 instead of 500
       const statusCode = error.statusCode || (error.isUnsupportedPair ? 400 : 500);
       const isClientError = statusCode >= 400 && statusCode < 500;
-      
+      const userMessage = isNetworkError
+        ? 'Exchange provider temporarily unreachable. Please try again.'
+        : (error.message || 'Failed to fetch exchange limits from NOWPayments');
+
       return NextResponse.json(
         {
           success: false,
-          error: error.message || 'Failed to fetch exchange limits from NOWPayments',
+          error: userMessage,
         },
         { status: isClientError ? 400 : 500 }
       );
     }
   } catch (error: any) {
-    console.error('Exchange limits API error:', error);
+    const msg = error?.message || '';
+    const isNetworkError = msg.includes('fetch failed') || msg.includes('ECONNREFUSED') || msg.includes('ETIMEDOUT');
+    if (isNetworkError) {
+      console.error('Exchange limits API error (network):', msg);
+    } else {
+      console.error('Exchange limits API error:', error);
+    }
     return NextResponse.json(
       {
         success: false,
-        error: error.message || 'Internal server error',
+        error: msg.includes('fetch failed') ? 'Exchange provider temporarily unreachable. Please try again.' : (error.message || 'Internal server error'),
       },
       { status: 500 }
     );

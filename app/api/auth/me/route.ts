@@ -20,6 +20,22 @@ export async function GET() {
       );
     }
 
+    // Require verified email — do not treat unverified users as logged in
+    if (!user.emailVerified) {
+      const response = NextResponse.json(
+        { success: false, error: 'Email not verified. Please verify your email to sign in.' },
+        { status: 401 }
+      );
+      response.cookies.set('auth-token', '', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 0,
+        path: '/',
+      });
+      return response;
+    }
+
     return NextResponse.json({
       success: true,
       user: {

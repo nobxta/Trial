@@ -13,14 +13,21 @@ export default function AdminSettingsPage() {
   const [changingPaymentMode, setChangingPaymentMode] = useState(false);
   const [changingSandboxCase, setChangingSandboxCase] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [webhookDiag, setWebhookDiag] = useState<{
+    expectedWebhookUrl?: string;
+    publicBaseUrlConfigured?: boolean;
+    ipnSecretLiveSet?: boolean;
+    hint?: string;
+  } | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [envResponse, payoutModeResponse, paymentModeResponse] = await Promise.all([
+        const [envResponse, payoutModeResponse, paymentModeResponse, diagResponse] = await Promise.all([
           fetch('/api/admin/settings/env'),
           fetch('/api/admin/settings/payout-mode'),
           fetch('/api/admin/settings/payment-mode'),
+          fetch('/api/admin/system/webhook-diagnostics'),
         ]);
         
         if (envResponse.ok) {
@@ -37,6 +44,11 @@ export default function AdminSettingsPage() {
           const data = await paymentModeResponse.json();
           setPaymentMode(data.paymentMode || 'live');
           setSandboxCase(data.sandboxCase || 'success');
+        }
+
+        if (diagResponse.ok) {
+          const data = await diagResponse.json();
+          setWebhookDiag(data);
         }
       } catch (error) {
         console.error('Failed to fetch settings:', error);
@@ -338,6 +350,13 @@ export default function AdminSettingsPage() {
                 {envInfo?.nowpaymentsIpnSecretSandboxConfigured ? '••••••••' : 'Not configured'}
               </span>
             </div>
+            {webhookDiag && (
+              <div className="mt-3 p-3 rounded-lg text-xs" style={{ background: 'var(--admin-surface)', border: '1px solid var(--admin-border)' }}>
+                <p className="font-semibold mb-1" style={{ color: 'var(--admin-text-secondary)' }}>Webhook URL (for NOWPayments IPN)</p>
+                <p className="font-mono mb-1 break-all" style={{ color: 'var(--admin-text-primary)' }}>{webhookDiag.expectedWebhookUrl}</p>
+                <p className="mt-1" style={{ color: 'var(--admin-text-muted)' }}>{webhookDiag.hint}</p>
+              </div>
+            )}
           </div>
         </div>
 

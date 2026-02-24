@@ -83,13 +83,14 @@ export async function maybeApplySandboxSimulation(
     const delayMs = delayMinutes * 60 * 1000;
     if (now >= updatedAtMs + delayMs) {
       const paymentId = order.paymentId || order.orderId;
+      const internalStatus = order.payoutMode === 'manual' ? 'PAYMENT_CONFIRMED' : 'DONE';
       try {
         const result = await processWebhookStatusUpdateAtomic({
           paymentId,
           paymentStatus: 'finished',
           orderId: order.orderId,
-          internalStatus: 'DONE',
-          userStatus: getUserFacingStatus('DONE'),
+          internalStatus,
+          userStatus: getUserFacingStatus(internalStatus),
           providerStatus: 'finished',
           statusSource: 'system',
           fromAddress: order.fromAddress || undefined,
@@ -115,7 +116,10 @@ export async function maybeApplySandboxSimulation(
   }
 
   const providerStatus = SANDBOX_CASE_TO_PROVIDER_STATUS[order.sandboxCase];
-  const mappedStatus = mapProviderStatusToInternal(providerStatus) as InternalStatus;
+  let mappedStatus = mapProviderStatusToInternal(providerStatus) as InternalStatus;
+  if (order.payoutMode === 'manual' && mappedStatus === 'DONE') {
+    mappedStatus = 'PAYMENT_CONFIRMED';
+  }
   const paymentId = order.paymentId || order.orderId;
 
   try {

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowDown, Copy, CheckCircle } from "lucide-react";
 import CryptoSelector from "./CryptoSelector";
 import { applyFee } from "@/lib/pricing";
+import { MIN_AMOUNT_BUFFER } from "@/lib/db-exchange-limits";
 import { getDefaultNetwork, Network } from "@/lib/networks";
 import { SupportedCrypto, getCryptoById, getNetworkChainFromSupportedCrypto } from "@/lib/supported-cryptos";
 import { useCryptoPrices } from "@/hooks/useCryptoPrices";
@@ -91,9 +92,13 @@ export default function ExchangeWidget() {
   const [orderType, setOrderType] = useState<"fixed" | "float">("fixed");
   const [destination, setDestination] = useState("");
   const [exchangeRate, setExchangeRate] = useState<number | null>(null);
-  const fixedRateFee = 1.0;
-  const floatRateFee = 0.5;
-  
+  const [feeSettings, setFeeSettings] = useState<{ fixedFeePercent: number; floatingFeePercent: number }>({
+    fixedFeePercent: 1.0,
+    floatingFeePercent: 0.5,
+  });
+  const fixedRateFee = feeSettings.fixedFeePercent;
+  const floatRateFee = feeSettings.floatingFeePercent;
+
   // Exchange limits state
   const [exchangeLimits, setExchangeLimits] = useState<{ min_amount: number; max_amount?: number } | null>(null);
   const [limitsLoading, setLimitsLoading] = useState(false);
@@ -131,6 +136,22 @@ export default function ExchangeWidget() {
       setExchangeRate(null);
     }
   }, [sendCrypto, receiveCrypto, prices]);
+
+  // Fetch exchange fee % from backend
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/exchange-fees')
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled || !data?.success) return;
+        setFeeSettings({
+          fixedFeePercent: typeof data.fixedFeePercent === 'number' ? data.fixedFeePercent : 1.0,
+          floatingFeePercent: typeof data.floatingFeePercent === 'number' ? data.floatingFeePercent : 0.5,
+        });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   const receiveAmount = useMemo(() => {
     const amount = parseFloat(sendAmount);
@@ -206,8 +227,9 @@ export default function ExchangeWidget() {
       return null;
     }
     
-    if (amount < exchangeLimits.min_amount) {
-      return `Minimum amount is ${formatMinAmount(exchangeLimits.min_amount)} ${sendCrypto?.symbol || ''}`;
+    const effectiveMin = exchangeLimits.min_amount * (1 + MIN_AMOUNT_BUFFER);
+    if (amount < effectiveMin) {
+      return `Minimum amount is ${formatMinAmount(effectiveMin)} ${sendCrypto?.symbol || ''}`;
     }
     
     if (exchangeLimits.max_amount && amount > exchangeLimits.max_amount) {
@@ -334,7 +356,7 @@ export default function ExchangeWidget() {
                 <span className="text-neutral-500">Fetching limits...</span>
               ) : exchangeLimits ? (
                 <span>
-                  Min: {formatMinAmount(exchangeLimits.min_amount)} {sendCrypto.symbol}
+                  Min: {formatMinAmount(exchangeLimits.min_amount * (1 + MIN_AMOUNT_BUFFER))} {sendCrypto.symbol}
                   {exchangeLimits.max_amount && ` • Max: ${formatMinAmount(exchangeLimits.max_amount)} ${sendCrypto.symbol}`}
                 </span>
               ) : (
@@ -448,11 +470,11 @@ export default function ExchangeWidget() {
               </span>
             </div>
             <div className="flex justify-between text-[10px] sm:text-xs">
-              <span className="text-neutral-500">Network Fee</span>
+              <span className="text-neutral-500" title="Estimated by network; may vary">Network Fee (est.)</span>
               <span className="text-neutral-300">~ ${networkFee.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-[10px] sm:text-xs">
-              <span className="text-neutral-500">ETA</span>
+              <span className="text-neutral-500" title="Estimated time; actual time depends on confirmations">ETA (est.)</span>
               <span className="text-neutral-300">{eta}</span>
             </div>
           </div>
@@ -496,7 +518,7 @@ export default function ExchangeWidget() {
                     receive_asset: receiveCrypto.id, // Use id field for NOWPayments
                     receive_network: receiveNetwork.chain,
                     expected_receive: expectedReceive,
-                    rate_type: orderType,
+                    rate_type: orderType === 'float' ? 'floating' : 'fixed',
                     destination: destination.trim(),
                     order_id: orderId,
                     price_amount: expectedReceive,

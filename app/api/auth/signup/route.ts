@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createUser, getUserByEmail } from '@/lib/db';
-import { hashPassword, generateToken } from '@/lib/auth';
+import { hashPassword } from '@/lib/auth';
 import { sendVerificationEmail } from '@/lib/email';
 import { cleanupUnverifiedAccounts } from '@/lib/cleanup';
 import crypto from 'crypto';
@@ -46,9 +46,6 @@ export async function POST(request: NextRequest) {
       verificationTokenExpiresAt,
     });
 
-    // Generate token
-    const token = generateToken({ userId: user.id, email: user.email });
-
     // Get base URL for verification link
     const protocol = request.headers.get('x-forwarded-proto') || 
                      (request.url.startsWith('https') ? 'https' : 'http');
@@ -80,13 +77,8 @@ export async function POST(request: NextRequest) {
       ...(process.env.NODE_ENV === 'development' && { verificationUrl }),
     });
 
-    // Set auth cookie
-    response.cookies.set('auth-token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7, // 7 days
-    });
+    // Do NOT set auth cookie — user must verify email and sign in to get a session.
+    // This ensures unverified users are never shown as logged in.
 
     return response;
   } catch (error) {

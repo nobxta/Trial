@@ -17,6 +17,7 @@ export interface Order {
   paymentId: string | null;
   // Payment mode fields
   paymentMode: 'live' | 'sandbox' | null; // Payment mode when order was created
+  payoutMode: 'manual' | 'automatic' | null; // Payout mode at creation: manual = funds to balance, admin pays; automatic = NOWPayments sends to user
   purchaseId: string | null; // NOWPayments purchase_id
   sandboxCase: 'success' | 'failed' | 'expired' | 'partially_paid' | null; // Sandbox test case
   // Status fields (new system)
@@ -40,6 +41,11 @@ export interface Order {
   expectedReceive: number | null;
   rateTimestamp: string | null;
   rateDeviationPercent: number | null;
+  // Rate mode (fixed vs floating) and provider amounts
+  rateMode: 'fixed' | 'floating' | null;
+  providerRateLocked: boolean;
+  providerPayAmount: number | null;
+  finalReceiveAmount: number | null;
   // Transaction hashes
   payinHash: string | null;
   payoutHash: string | null;
@@ -51,6 +57,10 @@ export interface Order {
   updatedAt: string;
   // Expiration
   expiresAt: string | null;
+  /** When to auto-complete this manual order (set once at PAYMENT_CONFIRMED; random 3–15 min). NULL if not scheduled. */
+  manualAutoCompleteAt: string | null;
+  /** Optional email for order status notifications (order-page subscribe). Used for guest orders. */
+  notificationEmail: string | null;
 }
 
 function checkSupabase() {
@@ -74,6 +84,7 @@ function mapOrderRow(row: any): Order {
     orderId: row.order_id,
     paymentId: row.payment_id,
     paymentMode: row.payment_mode || null,
+    payoutMode: row.payout_mode === 'manual' || row.payout_mode === 'automatic' ? row.payout_mode : null,
     purchaseId: row.purchase_id || null,
     sandboxCase: row.sandbox_case || null,
     internalStatus,
@@ -93,6 +104,10 @@ function mapOrderRow(row: any): Order {
     expectedReceive: row.expected_receive ? parseFloat(row.expected_receive) : null,
     rateTimestamp: row.rate_timestamp || null,
     rateDeviationPercent: row.rate_deviation_percent ? parseFloat(row.rate_deviation_percent) : null,
+    rateMode: row.rate_mode === 'fixed' || row.rate_mode === 'floating' ? row.rate_mode : null,
+    providerRateLocked: Boolean(row.provider_rate_locked),
+    providerPayAmount: row.provider_pay_amount != null ? parseFloat(row.provider_pay_amount) : null,
+    finalReceiveAmount: row.final_receive_amount != null ? parseFloat(row.final_receive_amount) : null,
     payinHash: row.payin_hash || null,
     payoutHash: row.payout_hash || null,
     manualReviewRequired: row.manual_review_required || false,
@@ -100,6 +115,8 @@ function mapOrderRow(row: any): Order {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     expiresAt: row.expires_at || null,
+    manualAutoCompleteAt: row.manual_auto_complete_at ?? null,
+    notificationEmail: row.notification_email ?? null,
   };
 }
 
@@ -178,11 +195,35 @@ export async function getOrderByOrderId(orderId: string): Promise<Order | null> 
   return mapOrderRow(data);
 }
 
+/**
+ * Set notification email for an order (order-page subscribe).
+ * Allowed for any order by order_id (order ID acts as secret for tracking).
+ */
+export async function updateOrderNotificationEmail(orderId: string, email: string): Promise<Order | null> {
+  checkSupabase();
+
+  const { data, error } = await supabaseAdmin!
+    .from('orders')
+    .update({ notification_email: email.trim().toLowerCase(), updated_at: new Date().toISOString() })
+    .eq('order_id', orderId)
+    .select()
+    .single();
+
+  if (error) {
+    if (isNotFoundError(error.code)) return null;
+    throw wrapDbError(error, 'updateOrderNotificationEmail');
+  }
+  if (!data) return null;
+
+  return mapOrderRow(data);
+}
+
 export async function createOrder(userId: string | null, orderData: {
   orderId: string;
   paymentId?: string;
   purchaseId?: string;
   paymentMode?: 'live' | 'sandbox';
+  payoutMode?: 'manual' | 'automatic';
   sandboxCase?: 'success' | 'failed' | 'expired' | 'partially_paid';
   internalStatus?: InternalStatus;
   fromCurrency: string;
@@ -215,6 +256,7 @@ export async function createOrder(userId: string | null, orderData: {
       payment_id: toDbNull(orderData.paymentId),
       purchase_id: toDbNull(orderData.purchaseId),
       payment_mode: toDbNull(orderData.paymentMode),
+      payout_mode: toDbNull(orderData.payoutMode),
       sandbox_case: toDbNull(orderData.sandboxCase),
       // New status fields
       internal_status: internalStatus,
@@ -258,6 +300,7 @@ export async function createOrderWithHistoryTransaction(
     paymentId?: string;
     purchaseId?: string;
     paymentMode?: 'live' | 'sandbox';
+    payoutMode?: 'manual' | 'automatic';
     sandboxCase?: 'success' | 'failed' | 'expired' | 'partially_paid';
     internalStatus?: InternalStatus;
     fromCurrency: string;
@@ -272,6 +315,10 @@ export async function createOrderWithHistoryTransaction(
     expectedReceive?: number;
     rateTimestamp?: string;
     rateDeviationPercent?: number;
+    rateMode?: 'fixed' | 'floating';
+    providerRateLocked?: boolean;
+    providerPayAmount?: number | null;
+    finalReceiveAmount?: number | null;
   }
 ): Promise<Order> {
   checkSupabase();
@@ -286,6 +333,7 @@ export async function createOrderWithHistoryTransaction(
     payment_id: toStr(orderData.paymentId ?? undefined),
     purchase_id: toStr(orderData.purchaseId ?? undefined),
     payment_mode: toStr(orderData.paymentMode ?? undefined),
+    payout_mode: toStr(orderData.payoutMode ?? undefined),
     sandbox_case: toStr(orderData.sandboxCase ?? undefined),
     internal_status: internalStatus,
     user_status: userStatus,
@@ -303,6 +351,10 @@ export async function createOrderWithHistoryTransaction(
     expected_receive: orderData.expectedReceive ?? null,
     rate_timestamp: orderData.rateTimestamp ?? null,
     rate_deviation_percent: orderData.rateDeviationPercent ?? null,
+    rate_mode: toStr(orderData.rateMode ?? undefined),
+    provider_rate_locked: orderData.providerRateLocked ?? false,
+    provider_pay_amount: orderData.providerPayAmount ?? null,
+    final_receive_amount: orderData.finalReceiveAmount ?? null,
   };
 
   const { data, error } = await supabaseAdmin!.rpc('create_order_with_history', {
@@ -412,6 +464,40 @@ export async function findStalePaidOrders(options: {
   return (data ?? []).map(mapOrderRow);
 }
 
+/** Statuses that are "paid but not DONE" for manual auto-complete (same set as reconciliation second pass). */
+const MANUAL_AUTOCOMPLETE_STATUSES = ['PAYMENT_CONFIRMED', 'PROCESSING_BY_PROVIDER', 'MANUAL_REVIEW'] as const;
+
+/**
+ * Find manual payout orders eligible for auto-complete: payout_mode = 'manual', status in paid-but-not-DONE,
+ * and manual_auto_complete_at <= now() (scheduled time reached). Each order gets a random 3–15 min scheduled
+ * time when it first reaches PAYMENT_CONFIRMED (set in process_webhook_status_update). Idempotent: already
+ * DONE orders are not returned.
+ */
+export async function findStaleManualOrdersForAutoComplete(options: {
+  limit?: number;
+}): Promise<Order[]> {
+  checkSupabase();
+
+  const limit = Math.min(options.limit ?? 50, 100);
+  const nowIso = new Date().toISOString();
+
+  const { data, error } = await supabaseAdmin!
+    .from('orders')
+    .select('*')
+    .eq('payout_mode', 'manual')
+    .in('internal_status', [...MANUAL_AUTOCOMPLETE_STATUSES])
+    .not('manual_auto_complete_at', 'is', null)
+    .lte('manual_auto_complete_at', nowIso)
+    .order('manual_auto_complete_at', { ascending: true })
+    .limit(limit);
+
+  if (error) {
+    throw wrapDbError(error, 'findStaleManualOrdersForAutoComplete');
+  }
+
+  return (data ?? []).map(mapOrderRow);
+}
+
 // Get order by payment_id (needed for webhook processing)
 export async function getOrderByPaymentId(paymentId: string): Promise<Order | null> {
   checkSupabase();
@@ -502,10 +588,14 @@ export async function processWebhookStatusUpdateAtomic(params: {
   fromAddress?: string;
   payinHash?: string;
   payoutHash?: string;
+  /** Actual receive amount from provider (e.g. outcome_amount in IPN). Updates final_receive_amount and to_amount. */
+  finalReceiveAmount?: number | null;
+  /** Outcome amount to store as to_amount when provider confirms (e.g. floating rate final amount). */
+  toAmount?: number | null;
 }): Promise<{ alreadyProcessed: true } | { alreadyProcessed: false; order: Order }> {
   checkSupabase();
 
-  const p_params = {
+  const p_params: Record<string, unknown> = {
     payment_id: params.paymentId,
     payment_status: params.paymentStatus,
     order_id: params.orderId,
@@ -517,6 +607,8 @@ export async function processWebhookStatusUpdateAtomic(params: {
     payin_hash: params.payinHash ?? null,
     payout_hash: params.payoutHash ?? null,
   };
+  if (params.finalReceiveAmount != null) p_params.final_receive_amount = params.finalReceiveAmount;
+  if (params.toAmount != null) p_params.to_amount = params.toAmount;
 
   const { data, error } = await supabaseAdmin!
     .rpc('process_webhook_status_update', { p_params });

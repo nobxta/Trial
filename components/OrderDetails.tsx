@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Copy, Check } from "lucide-react";
 import CryptoIcon from "./CryptoIcon";
+import { getAssetIconUrl } from "@/lib/asset-normalize";
 
 interface OrderDetailsProps {
   orderId: string;
@@ -10,6 +11,8 @@ interface OrderDetailsProps {
   depositSymbol: string;
   depositDisplayName?: string;
   depositIconUrl?: string;
+  /** Full asset code (e.g. usdttrc20) so icon matches crypto select for all networks/coins */
+  depositAssetCode?: string;
   depositAddress: string;
   orderType: string;
   confirmationsNeeded: number;
@@ -27,6 +30,7 @@ export default function OrderDetails({
   depositSymbol,
   depositDisplayName,
   depositIconUrl,
+  depositAssetCode,
   depositAddress,
   orderType,
   confirmationsNeeded,
@@ -179,7 +183,7 @@ export default function OrderDetails({
             <CryptoIcon
               symbol={depositSymbol}
               className="w-8 h-8 flex-shrink-0"
-              imageUrl={depositIconUrl || `https://nowpayments.io/images/coins/${depositSymbol.toLowerCase()}.svg`}
+              imageUrl={depositIconUrl || getAssetIconUrl(depositAssetCode || depositSymbol)}
             />
             <div className="min-w-0 flex-1">
               <h3 className="text-base sm:text-xl font-bold text-white leading-snug">

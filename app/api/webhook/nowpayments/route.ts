@@ -17,6 +17,7 @@ import {
   isProductionEnv,
 } from '@/lib/env';
 import { supabaseAdmin } from '@/lib/supabase';
+import { paymentLogger } from '@/lib/payment-logger';
 
 /**
  * Recursively sort object keys for canonical JSON (per NOWPayments IPN docs).
@@ -46,6 +47,13 @@ function buildCanonicalBodyForSignature(payload: Record<string, unknown>): strin
   return JSON.stringify(sortObject(payload));
 }
 
+/** Compute HMAC SHA-512 hex of body (for logging on mismatch). */
+function computeHmacSha512Hex(body: string, secret: string): string {
+  const hmac = crypto.createHmac('sha512', secret);
+  hmac.update(body);
+  return hmac.digest('hex');
+}
+
 /**
  * Verify NOWPayments webhook signature
  * NOWPayments uses HMAC SHA-512 over the JSON body with keys sorted alphabetically.
@@ -68,10 +76,7 @@ function verifyWebhookSignature(
       return false;
     }
 
-    // Calculate HMAC SHA-512 hash (NOWPayments uses sha512 with IPN secret)
-    const hmac = crypto.createHmac('sha512', secret);
-    hmac.update(bodyToHash);
-    const calculatedSignature = hmac.digest('hex');
+    const calculatedSignature = computeHmacSha512Hex(bodyToHash, secret);
 
     // PRIORITY 4: Ensure calculated signature is also valid hex before comparison
     if (calculatedSignature.length !== 128) {
@@ -100,10 +105,16 @@ function verifyWebhookSignature(
  * - NOWPAYMENTS_IPN_SECRET: IPN secret key from NOWPayments dashboard
  */
 export async function POST(request: NextRequest) {
-  try {
-    // PRIORITY 5: Log webhook receipt (no payment_id / order objects in logs — security)
-    webhookLogger.info('Webhook received', { event: 'webhook_received' });
+  const timestamp = new Date().toISOString();
+  const remoteIp =
+    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+    request.headers.get('x-real-ip') ||
+    'unknown';
 
+  paymentLogger.webhookRequestReceived({ remote_ip: remoteIp, timestamp });
+  webhookLogger.info('Webhook received', { event: 'webhook_received' });
+
+  try {
     // Get raw body: read as text first so Next.js does not parse it (we need to parse ourselves).
     // Signature verification uses the canonical body (JSON with keys sorted alphabetically), not rawBody.
     const rawBody = await request.text();
@@ -114,6 +125,7 @@ export async function POST(request: NextRequest) {
       payload = JSON.parse(rawBody);
     } catch (error) {
       webhookLogger.error('Invalid JSON payload in webhook', error);
+      paymentLogger.webhookResponse({ status: 400, event: 'invalid_json' });
       return NextResponse.json(
         { error: 'Invalid JSON payload' },
         { status: 400 }
@@ -121,15 +133,16 @@ export async function POST(request: NextRequest) {
     }
 
     // Extract payment information from payload (needed to determine mode)
-    const paymentId = payload.payment_id;
-
-    if (!paymentId) {
+    // NowPayments may send payment_id as number or string; normalize to string for DB lookup
+    const paymentIdRaw = payload.payment_id;
+    if (paymentIdRaw === undefined || paymentIdRaw === null || paymentIdRaw === '') {
       webhookLogger.error('Webhook payload missing payment_id', undefined, { event: 'validation_error' });
       return NextResponse.json(
         { error: 'payment_id required' },
         { status: 400 }
       );
     }
+    const paymentId = String(paymentIdRaw);
 
     // Find order by payment_id to determine payment mode (select correct IPN secret)
     let order = await getOrderByPaymentId(paymentId);
@@ -157,28 +170,43 @@ export async function POST(request: NextRequest) {
                      request.headers.get('x-nowpayments-signature') ||
                      request.headers.get('signature');
 
-    // Verify signature if secret is configured
-    // NOWPayments signs the body with keys sorted alphabetically; we must use the same string.
+    // Verify signature if secret is configured.
+    // NowPayments may sign either the raw request body or canonical (alphabetically sorted keys) body.
+    // Try both so webhooks work regardless of which format their server uses.
     if (ipnSecret) {
       if (!signature) {
         webhookLogger.error('Webhook signature missing', undefined, { 
           event: 'signature_missing',
           payment_mode: paymentMode,
         });
+        paymentLogger.webhookResponse({ status: 401, event: 'signature_missing' });
         return NextResponse.json(
           { error: 'Signature required' },
           { status: 401 }
         );
       }
 
-      const bodyForSignature = buildCanonicalBodyForSignature(payload);
-      const isValid = verifyWebhookSignature(bodyForSignature, signature, ipnSecret);
+      const canonicalBody = buildCanonicalBodyForSignature(payload);
+      const isValidRaw = verifyWebhookSignature(rawBody, signature, ipnSecret);
+      const isValidCanonical = verifyWebhookSignature(canonicalBody, signature, ipnSecret);
+      const isValid = isValidRaw || isValidCanonical;
 
       if (!isValid) {
-        webhookLogger.error('Invalid webhook signature', undefined, { 
+        const calculatedRaw = computeHmacSha512Hex(rawBody, ipnSecret);
+        const calculatedCanonical = computeHmacSha512Hex(canonicalBody, ipnSecret);
+        const payloadHash = crypto.createHash('sha256').update(rawBody).digest('hex');
+        paymentLogger.webhookSignatureMismatch({
+          received_signature: signature,
+          calculated_signature_raw: calculatedRaw,
+          calculated_signature_canonical: calculatedCanonical,
+          payload_hash_sha256: payloadHash,
+          payment_mode: paymentMode,
+        });
+        webhookLogger.error('Invalid webhook signature (tried raw and canonical body)', undefined, {
           event: 'signature_invalid',
           payment_mode: paymentMode,
         });
+        paymentLogger.webhookResponse({ status: 401, event: 'signature_invalid' });
         return NextResponse.json(
           { error: 'Invalid signature' },
           { status: 401 }
@@ -188,6 +216,7 @@ export async function POST(request: NextRequest) {
       webhookLogger.info('Webhook signature verified', { 
         event: 'signature_verified',
         payment_mode: paymentMode,
+        used: isValidRaw ? 'raw_body' : 'canonical_body',
       });
     } else {
       // In development, allow webhooks without signature verification (with warning)
@@ -250,6 +279,7 @@ export async function POST(request: NextRequest) {
       webhookLogger.warn('Order not found for payment_id', {
         event: 'order_not_found',
       });
+      paymentLogger.webhookResponse({ status: 503, event: 'order_not_found' });
       // Return 503 so transient "order not found" (e.g. replica lag) does not permanently drop webhook events
       return NextResponse.json(
         { error: 'Order not found; retry later' },
@@ -259,9 +289,20 @@ export async function POST(request: NextRequest) {
     
     // Map NOWPayments status to internal order status
     let mappedStatus = mapProviderStatusToInternal(paymentStatus) as InternalStatus;
+    // Manual payout: when provider reports finished/success, do not set DONE; stop at PAYMENT_CONFIRMED so admin can pay user and mark completed.
+    if (order.payoutMode === 'manual' && mappedStatus === 'DONE') {
+      mappedStatus = 'PAYMENT_CONFIRMED';
+    }
+
+    // When provider sends outcome_amount (e.g. finished/confirming), store as final_receive_amount and to_amount (floating rate or fixed final)
+    const outcomeAmount =
+      typeof payload.outcome_amount === 'number'
+        ? payload.outcome_amount
+        : payload.outcome_amount != null
+          ? Number(payload.outcome_amount)
+          : undefined;
 
     // Atomic DB transaction: idempotency + order update + history. All succeed or all roll back.
-    // Prevents double-processing even if the database briefly fails after a partial write.
     let updatedOrder: Order;
     try {
       const result = await processWebhookStatusUpdateAtomic({
@@ -275,6 +316,10 @@ export async function POST(request: NextRequest) {
         fromAddress: payload.pay_address || undefined,
         payinHash: payload.payin_hash || undefined,
         payoutHash: payload.payout_hash || undefined,
+        ...(outcomeAmount != null && !Number.isNaN(outcomeAmount) && {
+          finalReceiveAmount: outcomeAmount,
+          toAmount: outcomeAmount,
+        }),
       });
 
       if (result.alreadyProcessed) {
@@ -421,6 +466,8 @@ export async function POST(request: NextRequest) {
       event: 'webhook_completed',
     });
 
+    paymentLogger.webhookResponse({ status: 200, event: 'webhook_completed' });
+
     const response = NextResponse.json(
       { 
         received: true,
@@ -436,6 +483,7 @@ export async function POST(request: NextRequest) {
     webhookLogger.error('Webhook processing error', error, {
       event: 'webhook_error',
     });
+    paymentLogger.webhookResponse({ status: 500, event: 'webhook_error' });
     return NextResponse.json(
       { error: 'Something went wrong. Please try again.' },
       { status: 500 }

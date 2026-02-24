@@ -2,8 +2,12 @@
 -- MASTER MIGRATION — MintMove
 -- =============================================================================
 -- Single idempotent migration for fresh or existing databases.
--- Safe to run multiple times. Order: extensions → enums → tables → constraints
--- → indexes → triggers → functions → RLS/policies → seed data.
+-- Safe to run multiple times. Order: extensions → enums → tables → columns
+-- → constraints → indexes → triggers → functions → RLS/policies → seed data.
+--
+-- IDEMPOTENCY: Uses IF NOT EXISTS, ADD COLUMN IF NOT EXISTS, and DO blocks with
+-- EXCEPTION WHEN duplicate_object/OTHERS to silently skip already-applied changes.
+-- Running this file multiple times must NOT raise errors.
 --
 -- CONFLICTS / NOTES:
 -- - 033_create_payouts_table.sql defined a different payouts schema (user_id,
@@ -19,7 +23,10 @@
 -- -----------------------------------------------------------------------------
 -- 1. EXTENSIONS
 -- -----------------------------------------------------------------------------
--- (None required for this schema; add here if needed, e.g. CREATE EXTENSION IF NOT EXISTS "uuid-ossp";)
+DO $$ BEGIN
+  CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 
 -- -----------------------------------------------------------------------------
 -- 2. CORE FUNCTIONS (no table dependencies)
@@ -420,7 +427,15 @@ CREATE TABLE IF NOT EXISTS exchange_limits (
   UNIQUE(currency_from, currency_to, is_fixed_rate)
 );
 
--- 3.28 Webhook orphans (046)
+-- 3.28 Exchange fee settings (051) — single row for fixed/floating fee percent
+CREATE TABLE IF NOT EXISTS exchange_fee_settings (
+  id SERIAL PRIMARY KEY,
+  fixed_fee_percent DECIMAL(5, 2) NOT NULL DEFAULT 1.0,
+  floating_fee_percent DECIMAL(5, 2) NOT NULL DEFAULT 0.5,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 3.29 Webhook orphans (046)
 CREATE TABLE IF NOT EXISTS webhook_orphans (
   payment_id TEXT PRIMARY KEY,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -429,7 +444,7 @@ CREATE TABLE IF NOT EXISTS webhook_orphans (
   recovered_order_id TEXT
 );
 
--- 3.29 Cron runs (046)
+-- 3.30 Cron runs (046)
 CREATE TABLE IF NOT EXISTS cron_runs (
   endpoint text PRIMARY KEY,
   last_success_at TIMESTAMPTZ,
@@ -455,26 +470,53 @@ BEGIN
   END IF;
 END $$;
 
--- 4.2 Allow NULL user_id on orders (039)
-ALTER TABLE orders ALTER COLUMN user_id DROP NOT NULL;
+-- 4.2 Allow NULL user_id on orders (039) — safe if already nullable
+DO $$ BEGIN
+  ALTER TABLE orders ALTER COLUMN user_id DROP NOT NULL;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 
 -- 4.3 Add columns that may have been added in incremental migrations (idempotent)
 ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token_expires_at TIMESTAMP WITH TIME ZONE;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_mode TEXT;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS purchase_id TEXT;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS sandbox_case TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS payout_mode TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS notification_email TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS manual_auto_complete_at TIMESTAMPTZ;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS rate_mode TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS provider_rate_locked BOOLEAN DEFAULT false;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS provider_pay_amount DECIMAL(20, 8);
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS final_receive_amount DECIMAL(20, 8);
 
--- Add check constraints only if column exists and constraint not present (avoid duplicate constraint names)
+-- Add check constraints only if not already present (silently skip on duplicate_object)
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'orders' AND column_name = 'payment_mode') THEN
-    ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_payment_mode_check;
     ALTER TABLE orders ADD CONSTRAINT orders_payment_mode_check CHECK (payment_mode IS NULL OR payment_mode IN ('live', 'sandbox'));
   END IF;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+DO $$
+BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'orders' AND column_name = 'sandbox_case') THEN
-    ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_sandbox_case_check;
     ALTER TABLE orders ADD CONSTRAINT orders_sandbox_case_check CHECK (sandbox_case IS NULL OR sandbox_case IN ('success', 'failed', 'expired', 'partially_paid'));
   END IF;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'orders' AND column_name = 'payout_mode') THEN
+    ALTER TABLE orders ADD CONSTRAINT orders_payout_mode_check CHECK (payout_mode IS NULL OR payout_mode IN ('manual', 'automatic'));
+  END IF;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'orders' AND column_name = 'rate_mode') THEN
+    ALTER TABLE orders ADD CONSTRAINT orders_rate_mode_check CHECK (rate_mode IS NULL OR rate_mode IN ('fixed', 'floating'));
+  END IF;
+EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 -- -----------------------------------------------------------------------------
@@ -490,13 +532,14 @@ BEGIN
     JOIN information_schema.constraint_column_usage ccu ON tc.constraint_name = ccu.constraint_name
     WHERE tc.table_schema = 'public' AND tc.table_name = 'disputes'
       AND tc.constraint_type = 'CHECK' AND ccu.column_name = 'status'
+      AND tc.constraint_name <> 'disputes_status_check'
   LOOP
     EXECUTE 'ALTER TABLE disputes DROP CONSTRAINT IF EXISTS ' || quote_ident(r.constraint_name);
   END LOOP;
-  ALTER TABLE disputes DROP CONSTRAINT IF EXISTS disputes_status_check;
   ALTER TABLE disputes ADD CONSTRAINT disputes_status_check
     CHECK (status IN ('open', 'investigating', 'resolved', 'closed', 'waiting', 'deleted'));
 EXCEPTION
+  WHEN duplicate_object THEN NULL;
   WHEN OTHERS THEN NULL;
 END $$;
 
@@ -630,6 +673,9 @@ CREATE INDEX IF NOT EXISTS idx_exchange_limits_currency_to ON exchange_limits(cu
 CREATE INDEX IF NOT EXISTS idx_exchange_limits_pair ON exchange_limits(currency_from, currency_to);
 CREATE INDEX IF NOT EXISTS idx_exchange_limits_updated_at ON exchange_limits(updated_at);
 
+CREATE INDEX IF NOT EXISTS idx_orders_payout_mode ON orders(payout_mode);
+CREATE INDEX IF NOT EXISTS idx_orders_manual_auto_complete_at ON orders(manual_auto_complete_at) WHERE payout_mode = 'manual' AND manual_auto_complete_at IS NOT NULL;
+
 CREATE INDEX IF NOT EXISTS idx_webhook_orphans_created_at ON webhook_orphans(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_webhook_orphans_recovered_at ON webhook_orphans(recovered_at) WHERE recovered_at IS NULL;
 
@@ -747,19 +793,21 @@ RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE v_row orders%ROWTYPE; v_order_id text;
 BEGIN
   INSERT INTO orders (
-    user_id, order_id, payment_id, purchase_id, payment_mode, sandbox_case,
+    user_id, order_id, payment_id, purchase_id, payment_mode, sandbox_case, payout_mode,
     internal_status, user_status, status, status_source,
     from_currency, from_amount, from_network, from_address,
     to_currency, to_amount, to_network, to_address,
-    provider_rate, expected_receive, rate_timestamp, rate_deviation_percent
+    provider_rate, expected_receive, rate_timestamp, rate_deviation_percent,
+    rate_mode, provider_rate_locked, provider_pay_amount, final_receive_amount
   ) VALUES (
     (p_order->>'user_id')::uuid, p_order->>'order_id', NULLIF(TRIM(p_order->>'payment_id'), ''), NULLIF(TRIM(p_order->>'purchase_id'), ''),
-    NULLIF(TRIM(p_order->>'payment_mode'), ''), NULLIF(TRIM(p_order->>'sandbox_case'), ''),
+    NULLIF(TRIM(p_order->>'payment_mode'), ''), NULLIF(TRIM(p_order->>'sandbox_case'), ''), NULLIF(TRIM(p_order->>'payout_mode'), ''),
     COALESCE(NULLIF(TRIM(p_order->>'internal_status'), ''), 'NEW'), COALESCE(NULLIF(TRIM(p_order->>'user_status'), ''), 'Waiting for payment'),
     COALESCE(NULLIF(TRIM(p_order->>'status'), ''), 'NEW'), COALESCE(NULLIF(TRIM(p_order->>'status_source'), ''), 'system'),
     p_order->>'from_currency', (p_order->>'from_amount')::decimal, NULLIF(TRIM(p_order->>'from_network'), ''), NULLIF(TRIM(p_order->>'from_address'), ''),
     p_order->>'to_currency', (p_order->>'to_amount')::decimal, NULLIF(TRIM(p_order->>'to_network'), ''), NULLIF(TRIM(p_order->>'to_address'), ''),
-    (p_order->>'provider_rate')::decimal, (p_order->>'expected_receive')::decimal, (p_order->>'rate_timestamp')::timestamptz, (p_order->>'rate_deviation_percent')::decimal
+    (p_order->>'provider_rate')::decimal, (p_order->>'expected_receive')::decimal, (p_order->>'rate_timestamp')::timestamptz, (p_order->>'rate_deviation_percent')::decimal,
+    NULLIF(TRIM(p_order->>'rate_mode'), ''), COALESCE((p_order->>'provider_rate_locked')::boolean, false), (p_order->>'provider_pay_amount')::decimal, (p_order->>'final_receive_amount')::decimal
   ) RETURNING * INTO v_row;
   v_order_id := v_row.order_id;
   INSERT INTO order_status_history (order_id, status, source) VALUES (v_order_id, v_row.internal_status, COALESCE(v_row.status_source, 'system'));
@@ -768,34 +816,53 @@ END; $$;
 
 CREATE OR REPLACE FUNCTION process_webhook_status_update(p_params jsonb)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER AS $$
-DECLARE v_id uuid; v_row orders%ROWTYPE; v_old_internal_status text;
+DECLARE
+  v_id uuid;
+  v_row orders%ROWTYPE;
+  v_old_internal_status text;
+  v_new_internal_status text;
+  v_payout_mode text;
+  v_manual_auto_complete_at timestamptz;
+  v_final_receive_amount decimal;
+  v_to_amount decimal;
 BEGIN
   INSERT INTO webhook_idempotency (payment_id, payment_status, order_id)
   VALUES (p_params->>'payment_id', p_params->>'payment_status', p_params->>'order_id')
   ON CONFLICT (payment_id, payment_status) DO NOTHING RETURNING id INTO v_id;
   IF v_id IS NULL THEN RETURN jsonb_build_object('already_processed', true); END IF;
-  SELECT internal_status INTO v_old_internal_status FROM orders WHERE order_id = p_params->>'order_id';
+  SELECT internal_status, payout_mode INTO v_old_internal_status, v_payout_mode FROM orders WHERE order_id = p_params->>'order_id';
   IF v_old_internal_status IS NULL THEN RAISE EXCEPTION 'order_not_found: order_id %', p_params->>'order_id'; END IF;
   IF v_old_internal_status IN ('DONE', 'FAILED', 'EXPIRED') THEN
     SELECT * INTO v_row FROM orders WHERE order_id = p_params->>'order_id';
     RETURN jsonb_build_object('already_processed', false, 'order', to_jsonb(v_row));
   END IF;
+  v_new_internal_status := NULLIF(TRIM(p_params->>'internal_status'), '');
+  v_final_receive_amount := (p_params->>'final_receive_amount')::decimal;
+  v_to_amount := (p_params->>'to_amount')::decimal;
+  IF v_payout_mode = 'manual' AND v_new_internal_status IN ('PAYMENT_CONFIRMED', 'PROCESSING_BY_PROVIDER', 'MANUAL_REVIEW') THEN
+    v_manual_auto_complete_at := NOW() + (3 + floor(random() * 13)) * interval '1 minute';
+  ELSE
+    v_manual_auto_complete_at := NULL;
+  END IF;
   UPDATE orders SET
-    internal_status = COALESCE(NULLIF(TRIM(p_params->>'internal_status'), ''), internal_status),
+    internal_status = COALESCE(v_new_internal_status, internal_status),
     user_status = COALESCE(NULLIF(TRIM(p_params->>'user_status'), ''), user_status),
-    status = COALESCE(NULLIF(TRIM(p_params->>'internal_status'), ''), status),
+    status = COALESCE(v_new_internal_status, status),
     status_source = COALESCE(NULLIF(TRIM(p_params->>'status_source'), ''), 'webhook'),
     provider_status = NULLIF(TRIM(p_params->>'provider_status'), ''),
     from_address = COALESCE(NULLIF(TRIM(p_params->>'from_address'), ''), from_address),
     payin_hash = COALESCE(NULLIF(TRIM(p_params->>'payin_hash'), ''), payin_hash),
     payout_hash = COALESCE(NULLIF(TRIM(p_params->>'payout_hash'), ''), payout_hash),
     payout_hash_entered_at = CASE WHEN NULLIF(TRIM(p_params->>'payout_hash'), '') IS NOT NULL THEN NOW() ELSE payout_hash_entered_at END,
-    updated_at = NOW()
+    updated_at = NOW(),
+    manual_auto_complete_at = CASE WHEN v_manual_auto_complete_at IS NOT NULL AND manual_auto_complete_at IS NULL THEN v_manual_auto_complete_at ELSE manual_auto_complete_at END,
+    final_receive_amount = CASE WHEN v_final_receive_amount IS NOT NULL THEN v_final_receive_amount ELSE final_receive_amount END,
+    to_amount = CASE WHEN v_to_amount IS NOT NULL THEN v_to_amount ELSE to_amount END
   WHERE order_id = p_params->>'order_id' RETURNING * INTO v_row;
   IF NOT FOUND THEN RAISE EXCEPTION 'order update failed: order_id %', p_params->>'order_id'; END IF;
-  IF v_old_internal_status IS DISTINCT FROM (p_params->>'internal_status') THEN
+  IF v_old_internal_status IS DISTINCT FROM v_new_internal_status THEN
     INSERT INTO order_status_history (order_id, status, source, payment_status, metadata)
-    VALUES (p_params->>'order_id', p_params->>'internal_status', 'webhook', NULLIF(TRIM(p_params->>'payment_status'), ''),
+    VALUES (p_params->>'order_id', v_new_internal_status, 'webhook', NULLIF(TRIM(p_params->>'payment_status'), ''),
       jsonb_build_object('payin_hash', NULLIF(TRIM(p_params->>'payin_hash'), ''), 'payout_hash', NULLIF(TRIM(p_params->>'payout_hash'), '')));
   END IF;
   RETURN jsonb_build_object('already_processed', false, 'order', to_jsonb(v_row));
@@ -804,29 +871,30 @@ END; $$;
 -- -----------------------------------------------------------------------------
 -- 9. ROW LEVEL SECURITY & POLICIES
 -- -----------------------------------------------------------------------------
-ALTER TABLE users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE addresses ENABLE ROW LEVEL SECURITY;
-ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
-ALTER TABLE affiliates ENABLE ROW LEVEL SECURITY;
-ALTER TABLE referrals ENABLE ROW LEVEL SECURITY;
-ALTER TABLE webhook_idempotency ENABLE ROW LEVEL SECURITY;
-ALTER TABLE order_status_history ENABLE ROW LEVEL SECURITY;
-ALTER TABLE admin_users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE admin_action_logs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE exchange_pairs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE exchange_settings ENABLE ROW LEVEL SECURITY;
-ALTER TABLE admin_notes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE flagged_users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE crypto_prices ENABLE ROW LEVEL SECURITY;
-ALTER TABLE disputes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE wallets ENABLE ROW LEVEL SECURITY;
-ALTER TABLE payouts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE user_login_logs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE dispute_messages ENABLE ROW LEVEL SECURITY;
-ALTER TABLE user_activity_logs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE dispute_sessions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE blocked_ips ENABLE ROW LEVEL SECURITY;
-ALTER TABLE exchange_limits ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN ALTER TABLE users ENABLE ROW LEVEL SECURITY; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE addresses ENABLE ROW LEVEL SECURITY; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE orders ENABLE ROW LEVEL SECURITY; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE affiliates ENABLE ROW LEVEL SECURITY; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE referrals ENABLE ROW LEVEL SECURITY; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE webhook_idempotency ENABLE ROW LEVEL SECURITY; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE order_status_history ENABLE ROW LEVEL SECURITY; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE admin_users ENABLE ROW LEVEL SECURITY; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE admin_action_logs ENABLE ROW LEVEL SECURITY; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE exchange_pairs ENABLE ROW LEVEL SECURITY; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE exchange_settings ENABLE ROW LEVEL SECURITY; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE admin_notes ENABLE ROW LEVEL SECURITY; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE flagged_users ENABLE ROW LEVEL SECURITY; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE crypto_prices ENABLE ROW LEVEL SECURITY; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE disputes ENABLE ROW LEVEL SECURITY; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE wallets ENABLE ROW LEVEL SECURITY; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE payouts ENABLE ROW LEVEL SECURITY; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE user_login_logs ENABLE ROW LEVEL SECURITY; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE dispute_messages ENABLE ROW LEVEL SECURITY; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE user_activity_logs ENABLE ROW LEVEL SECURITY; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE dispute_sessions ENABLE ROW LEVEL SECURITY; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE blocked_ips ENABLE ROW LEVEL SECURITY; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE exchange_limits ENABLE ROW LEVEL SECURITY; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE exchange_fee_settings ENABLE ROW LEVEL SECURITY; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 
 DROP POLICY IF EXISTS "Service role full access" ON users;
 CREATE POLICY "Service role full access" ON users FOR ALL USING (true) WITH CHECK (true);
@@ -876,6 +944,8 @@ DROP POLICY IF EXISTS "Service role full access" ON blocked_ips;
 CREATE POLICY "Service role full access" ON blocked_ips FOR ALL USING (true) WITH CHECK (true);
 DROP POLICY IF EXISTS "Service role full access" ON exchange_limits;
 CREATE POLICY "Service role full access" ON exchange_limits FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Service role full access" ON exchange_fee_settings;
+CREATE POLICY "Service role full access" ON exchange_fee_settings FOR ALL USING (true) WITH CHECK (true);
 
 -- -----------------------------------------------------------------------------
 -- 10. COMMENTS
@@ -889,6 +959,14 @@ COMMENT ON COLUMN orders.payment_mode IS 'Payment mode: live (real payments) or 
 COMMENT ON COLUMN orders.purchase_id IS 'NOWPayments purchase_id for tracking multiple payments per order';
 COMMENT ON COLUMN orders.sandbox_case IS 'Sandbox test case scenario (only used in sandbox mode)';
 COMMENT ON COLUMN users.verification_token_expires_at IS 'When the verification token expires. Null if no token or token has no expiry (legacy).';
+COMMENT ON COLUMN orders.notification_email IS 'Optional email for order status notifications (e.g. from order page subscribe). Used when user_id is NULL or in addition to user account email.';
+COMMENT ON COLUMN orders.manual_auto_complete_at IS 'When to auto-complete this manual payout order (set once when status first becomes PAYMENT_CONFIRMED/PROCESSING_BY_PROVIDER/MANUAL_REVIEW). Random 3–15 min from that moment. NULL = not scheduled or automatic order.';
+COMMENT ON COLUMN orders.payout_mode IS 'Payout mode: manual (admin completes) or automatic.';
+COMMENT ON COLUMN orders.rate_mode IS 'Exchange rate mode at creation: fixed (rate locked ~20 min) or floating (rate at confirmation).';
+COMMENT ON COLUMN orders.provider_rate_locked IS 'True when rate_mode is fixed and provider locked the rate.';
+COMMENT ON COLUMN orders.provider_pay_amount IS 'Exact amount to send (crypto) from NOWPayments create payment response (pay_amount).';
+COMMENT ON COLUMN orders.final_receive_amount IS 'Actual receive amount from provider (e.g. outcome_amount in webhook when finished).';
+COMMENT ON TABLE exchange_fee_settings IS 'Global exchange fee percentages: fixed rate and floating rate. Use id=1 as the single row.';
 
 COMMENT ON TABLE email_queue IS 'Database-backed email queue. Emails are queued here and processed by cron job.';
 COMMENT ON COLUMN email_queue.status IS 'pending: waiting to be sent, sent: successfully sent, failed: permanently failed after max attempts';
@@ -924,6 +1002,10 @@ VALUES
   ('order_notifications_enabled', 'true'),
   ('verification_enabled', 'true')
 ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO exchange_fee_settings (id, fixed_fee_percent, floating_fee_percent)
+VALUES (1, 1.0, 0.5)
+ON CONFLICT (id) DO NOTHING;
 
 -- Optional backfill for existing orders (028): set internal_status/user_status from status (no-op if already set)
 UPDATE orders

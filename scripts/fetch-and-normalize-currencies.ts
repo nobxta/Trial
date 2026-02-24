@@ -63,10 +63,10 @@ function getCoinGeckoId(symbol: string, coingeckoMap: Record<string, string>): s
   return coingeckoMap[lowerSymbol] || null;
 }
 
-// Generate image URL from symbol
-function getImageUrl(symbol: string): string {
-  const lowerSymbol = symbol.toLowerCase();
-  return `https://nowpayments.io/images/coins/${lowerSymbol}.svg`;
+// Generate image URL from full asset id (e.g. usdttrc20) so icons match per network/coin
+function getImageUrl(assetId: string): string {
+  const normalized = assetId.toLowerCase().trim().replace(/[-_\s]/g, '');
+  return `https://nowpayments.io/images/coins/${normalized}.svg`;
 }
 
 // Normalize a currency ID from NOWPayments
@@ -80,7 +80,7 @@ function normalizeCurrency(id: string, coingeckoMap: Record<string, string>): No
   
   const network = detectNetwork(id);
   const coingeckoId = getCoinGeckoId(symbol, coingeckoMap);
-  const imageUrl = getImageUrl(symbol);
+  const imageUrl = getImageUrl(id);
   
   // Get a readable name from common coin names
   const coinNames: Record<string, string> = {

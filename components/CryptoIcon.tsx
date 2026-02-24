@@ -63,6 +63,66 @@ const cryptocompareImageIds: Record<string, string> = {
   BABYDOGE: "37746265",
 };
 
+// CoinGecko CDN fallback for symbols that often 404 on NOWPayments (e.g. FLOKI, PYUSD)
+const coingeckoImageUrls: Record<string, string> = {
+  FLOKI: "https://coin-images.coingecko.com/coins/images/16746/small/PNG_image.png",
+  PYUSD: "https://coin-images.coingecko.com/coins/images/31212/small/PYUSD_Token_Logo_2x.png",
+};
+
+// Brand colors per symbol (used for glow and fallback icon)
+export const CRYPTO_BRAND_COLORS: Record<string, string> = {
+  BTC: "#f7931a",
+  ETH: "#627eea",
+  USDT: "#26a17b",
+  USDC: "#2775ca",
+  BNB: "#f3ba2f",
+  SOL: "#14f195",
+  LTC: "#345d9d",
+  TON: "#0088cc",
+  XRP: "#0085c3",
+  ADA: "#0033ad",
+  DOGE: "#c2a633",
+  AVAX: "#e84142",
+  MATIC: "#8247e5",
+  DOT: "#e6007a",
+  LINK: "#375bd2",
+  UNI: "#ff007a",
+  ATOM: "#2e3148",
+  APT: "#000000",
+  ARB: "#28a0f0",
+  BCH: "#0ac18e",
+  TRX: "#ef0027",
+  XLM: "#000000",
+  XMR: "#ff6600",
+  ZEC: "#f4b728",
+  DASH: "#008ce7",
+  VET: "#15bdff",
+  NEAR: "#000000",
+  SUI: "#6fbcf0",
+  INJ: "#00b8ff",
+  KAS: "#1975c0",
+  LUNA: "#172852",
+  ALGO: "#000000",
+  "1INCH": "#000000",
+  AAVE: "#b6509e",
+  APE: "#0054f9",
+  FLOKI: "#000000",
+  GALA: "#000000",
+  MANA: "#ff2d55",
+  PEPE: "#3aaf4a",
+  SHIB: "#ffa409",
+  TUSD: "#000000",
+  PYUSD: "#0070ba",
+  HMSTR: "#000000",
+  NOT: "#000000",
+  TRUMP: "#000000",
+  BABYDOGE: "#000000",
+};
+
+export function getCryptoBrandColor(symbol: string): string {
+  return CRYPTO_BRAND_COLORS[symbol?.toUpperCase() ?? ""] ?? "#6366f1";
+}
+
 // Extract width and height from className if present (e.g., "w-6 h-6" = 24px)
 function getSize(className: string | undefined): number {
   if (!className) return 24;
@@ -75,7 +135,7 @@ function getSize(className: string | undefined): number {
 }
 
 export default function CryptoIcon({ symbol, image, imageUrl, className = "w-6 h-6" }: CryptoIconProps) {
-  type Stage = "nowpayments" | "local" | "cryptocompare" | "spothq" | "fallback";
+  type Stage = "nowpayments" | "local" | "cryptocompare" | "spothq" | "coingecko" | "fallback";
   const [stage, setStage] = useState<Stage>("fallback");
   const [loading, setLoading] = useState(true);
   const imgRef = useRef<HTMLImageElement | null>(null);
@@ -103,6 +163,8 @@ export default function CryptoIcon({ symbol, image, imageUrl, className = "w-6 h
   const spotHqUrl = useMemo(() => {
     return `https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/128/color/${lowerSymbol}.png`;
   }, [lowerSymbol]);
+
+  const coingeckoUrl = useMemo(() => coingeckoImageUrls[upperSymbol] ?? null, [upperSymbol]);
 
   // Default fallback icon
   const DefaultFallbackIcon = ({ className }: { className?: string }) => {
@@ -179,45 +241,10 @@ export default function CryptoIcon({ symbol, image, imageUrl, className = "w-6 h
 
   const size = getSize(className);
 
-  const color = useMemo(() => {
-    const colors: Record<string, string> = {
-      BTC: "#f7931a",
-      ETH: "#627eea",
-      USDT: "#26a17b",
-      USDC: "#2775ca",
-      BNB: "#f3ba2f",
-      SOL: "#14f195",
-      LTC: "#345d9d",
-      TON: "#0088cc",
-      XRP: "#0085c3",
-      ADA: "#0033ad",
-      DOGE: "#c2a633",
-      AVAX: "#e84142",
-      MATIC: "#8247e5",
-      DOT: "#e6007a",
-      LINK: "#375bd2",
-      UNI: "#ff007a",
-      ATOM: "#2e3148",
-      APT: "#000000",
-      ARB: "#28a0f0",
-      BCH: "#0ac18e",
-      TRX: "#ef0027",
-      XLM: "#000000",
-      XMR: "#ff6600",
-      ZEC: "#f4b728",
-      DASH: "#008ce7",
-      VET: "#15bdff",
-      NEAR: "#000000",
-      SUI: "#6fbcf0",
-      INJ: "#00b8ff",
-      KAS: "#1975c0",
-      LUNA: "#172852",
-    };
-    return colors[upperSymbol] || "#666";
-  }, [upperSymbol]);
+  const color = useMemo(() => getCryptoBrandColor(symbol), [symbol]);
 
   const nextStage = (failed: Stage): Stage => {
-    const order: Stage[] = ["nowpayments", "local", "cryptocompare", "spothq", "fallback"];
+    const order: Stage[] = ["nowpayments", "local", "cryptocompare", "spothq", "coingecko", "fallback"];
     const startIdx = order.indexOf(failed);
     for (let i = startIdx + 1; i < order.length; i++) {
       const candidate = order[i];
@@ -225,6 +252,7 @@ export default function CryptoIcon({ symbol, image, imageUrl, className = "w-6 h
       if (candidate === "local" && localImagePath) return candidate;
       if (candidate === "cryptocompare" && cryptoCompareUrl) return candidate;
       if (candidate === "spothq" && spotHqUrl) return candidate;
+      if (candidate === "coingecko" && coingeckoUrl) return candidate;
       if (candidate === "fallback") return "fallback";
     }
     return "fallback";
@@ -242,7 +270,7 @@ export default function CryptoIcon({ symbol, image, imageUrl, className = "w-6 h
     if (imgRef.current && imgRef.current.complete) {
       setLoading(false);
     }
-  }, [nowPaymentsImageUrl, localImagePath, cryptoCompareUrl, spotHqUrl, symbol]);
+  }, [nowPaymentsImageUrl, localImagePath, cryptoCompareUrl, spotHqUrl, coingeckoUrl, symbol]);
 
   if (stage === "nowpayments" && nowPaymentsImageUrl) {
     return (
@@ -326,6 +354,30 @@ export default function CryptoIcon({ symbol, image, imageUrl, className = "w-6 h
         <img
           ref={imgRef}
           src={spotHqUrl}
+          alt={symbol}
+          className={`object-contain w-full h-full ${loading ? "opacity-0" : "opacity-100"} transition-opacity duration-200`}
+          onError={() => {
+            setStage(nextStage("spothq"));
+            setLoading(false);
+          }}
+          onLoad={() => {
+            setLoading(false);
+          }}
+          loading="lazy"
+        />
+      </div>
+    );
+  }
+
+  if (stage === "coingecko" && coingeckoUrl) {
+    return (
+      <div className={`${className} rounded-full flex items-center justify-center overflow-hidden relative`} style={{ backgroundColor: color + "20" }}>
+        {loading && (
+          <div className={`absolute inset-0 rounded-full bg-neutral-800 animate-pulse`} style={{ backgroundColor: color + "20" }} />
+        )}
+        <img
+          ref={imgRef}
+          src={coingeckoUrl}
           alt={symbol}
           className={`object-contain w-full h-full ${loading ? "opacity-0" : "opacity-100"} transition-opacity duration-200`}
           onError={() => {

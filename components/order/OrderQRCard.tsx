@@ -14,7 +14,7 @@ function getQRWithAmount(address: string, amount: string, symbol: string): strin
 }
 
 const CARD_CLASS =
-  "rounded-lg border border-white/5 bg-[#12161f] p-6 md:p-8 min-h-0 flex flex-col h-full";
+  "rounded-xl border border-white/[0.06] bg-[#12161f] p-6 md:p-8 min-h-0 flex flex-col h-full shadow-[0_4px_24px_rgba(0,0,0,0.2)]";
 
 interface OrderQRCardProps {
   orderId?: string;
@@ -22,6 +22,8 @@ interface OrderQRCardProps {
   amount: string;
   symbol: string;
   isExpired: boolean;
+  /** When true, use smaller QR and padding for mobile side-by-side layout */
+  compact?: boolean;
 }
 
 export default function OrderQRCard({
@@ -29,28 +31,32 @@ export default function OrderQRCard({
   amount,
   symbol,
   isExpired,
+  compact = false,
 }: OrderQRCardProps) {
-  const [qrSize, setQrSize] = useState(200);
+  const [qrSize, setQrSize] = useState(compact ? 100 : 200);
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     const update = () => {
       const mobile = typeof window !== "undefined" && window.innerWidth < 1024;
       setIsMobile(mobile);
-      setQrSize(mobile ? 240 : 200);
+      setQrSize(compact ? 100 : mobile ? 240 : 200);
     };
     update();
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
-  }, []);
+  }, [compact]);
 
   const qrValue = getQRWithAmount(address, amount, symbol);
   const hasQR = !!address && !!qrValue;
 
   return (
     <div
-      className={`${CARD_CLASS} relative overflow-hidden ${isExpired ? "grayscale backdrop-blur-sm" : ""}`}
+      className={`${CARD_CLASS} relative overflow-hidden flex flex-col min-w-0 ${compact ? "p-4" : ""} ${isExpired ? "grayscale backdrop-blur-sm" : ""}`}
     >
+      {!isExpired && !compact && (
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3 shrink-0">Scan to pay</h3>
+      )}
       <AnimatePresence mode="wait">
         {isExpired ? (
           <motion.div
@@ -76,19 +82,27 @@ export default function OrderQRCard({
             initial={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="flex-1 flex flex-col items-center justify-center w-full min-h-0"
+            className="flex-1 flex flex-col items-center justify-center w-full min-h-0 gap-2 sm:gap-4"
           >
             <div
-              className="rounded-3xl p-4 bg-white flex items-center justify-center shadow-inner w-64 h-64 lg:w-auto lg:h-auto"
-              style={!isMobile ? { width: qrSize + 32, height: qrSize + 32 } : undefined}
+              className="rounded-xl sm:rounded-3xl p-2 sm:p-4 bg-white flex items-center justify-center shadow-inner flex-shrink-0"
+              style={{ width: qrSize + (compact ? 16 : 32), height: qrSize + (compact ? 16 : 32), minWidth: qrSize + (compact ? 16 : 32), minHeight: qrSize + (compact ? 16 : 32) }}
             >
               <QRCodeSVG value={qrValue} size={qrSize} level="M" includeMargin={false} />
             </div>
+            {!compact && (
+              <p className="text-slate-400 text-xs sm:text-sm font-medium text-center">
+                Send exactly {amount} {symbol}
+              </p>
+            )}
           </motion.div>
         ) : (
           <div className="flex-1 flex items-center justify-center min-h-0">
-            <div className="rounded-3xl bg-white/5 w-64 h-64 flex items-center justify-center text-slate-500 text-sm">
-              No QR available
+            <div
+              className="rounded-xl sm:rounded-3xl bg-white/5 flex items-center justify-center text-slate-500 text-xs sm:text-sm"
+              style={compact ? { width: 116, height: 116 } : { width: 256, height: 256 }}
+            >
+              No QR
             </div>
           </div>
         )}

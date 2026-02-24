@@ -8,6 +8,12 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        heading: ['Plus Jakarta Sans', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        body: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['JetBrains Mono', 'Roboto Mono', 'ui-monospace', 'monospace'],
+        stepper: ['Chakra Petch', 'Inter', 'system-ui', 'sans-serif'],
+      },
       colors: {
         bg: "#0b0f1a",
         card: "#12182a",

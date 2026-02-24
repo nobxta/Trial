@@ -9,9 +9,6 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
-  async rewrites() {
-    return [{ source: '/favicon.ico', destination: '/logo/logo.png' }];
-  },
   images: {
     remotePatterns: [
       {

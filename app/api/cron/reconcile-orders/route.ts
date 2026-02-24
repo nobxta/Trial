@@ -1,12 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { runOrderReconciliation } from '@/lib/order-reconciliation';
+import { runOrderReconciliation, runManualPayoutAutoComplete } from '@/lib/order-reconciliation';
 import { recordCronSuccess, recordCronFailure, alertIfCronStale } from '@/lib/cron-runs';
 
 const ENDPOINT = '/api/cron/reconcile-orders';
 
+function cronLog(event: string, details?: Record<string, unknown>) {
+  console.log(
+    JSON.stringify({
+      level: 'info',
+      message: event,
+      timestamp: new Date().toISOString(),
+      source: 'cron_reconcile_orders',
+      endpoint: ENDPOINT,
+      ...details,
+    })
+  );
+}
+
 /**
- * Cron: Webhook failure recovery.
- * Security: In production CRON_SECRET must exist and be non-empty; fail closed.
+ * Cron: Webhook failure recovery + manual payout auto-complete.
+ * Compatible with external cron (e.g. cron-job.org): use GET or POST with Authorization: Bearer CRON_SECRET.
+ * Idempotent and safe to run every 5 minutes.
  */
 async function handler(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
@@ -23,12 +37,27 @@ async function handler(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
 
+  cronLog('cron_request_received', { method: request.method });
+
   try {
     await alertIfCronStale(ENDPOINT);
+
+    cronLog('reconciliation_started');
     const result = await runOrderReconciliation({
       olderThanMinutes: 15,
-      paidStaleMinutes: 25, // After ~25 min in Exchanging, check provider and set DONE if finished
+      paidStaleMinutes: 25,
       limit: 50,
+    });
+
+    cronLog('manual_auto_complete_started');
+    const manualResult = await runManualPayoutAutoComplete({
+      limit: 50,
+    });
+    cronLog('manual_auto_complete_executed', {
+      processed: manualResult.processed,
+      skipped: manualResult.skipped,
+      errors: manualResult.errors,
+      processedOrderIds: manualResult.processedOrderIds,
     });
 
     if (result.processed > 0 || result.errors > 0) {
@@ -40,15 +69,39 @@ async function handler(request: NextRequest) {
         errorOrderIds: result.errorOrderIds,
       });
     }
+    if (manualResult.processed > 0 || manualResult.errors > 0) {
+      console.log('[Cron] manual-payout-auto-complete:', {
+        processed: manualResult.processed,
+        skipped: manualResult.skipped,
+        errors: manualResult.errors,
+        processedOrderIds: manualResult.processedOrderIds,
+        errorOrderIds: manualResult.errorOrderIds,
+      });
+    }
 
     await recordCronSuccess(ENDPOINT);
+    cronLog('cron_completed', {
+      reconcile_processed: result.processed,
+      reconcile_errors: result.errors,
+      manual_processed: manualResult.processed,
+      manual_errors: manualResult.errors,
+    });
     return NextResponse.json({
       success: true,
-      processed: result.processed,
-      skipped: result.skipped,
-      errors: result.errors,
-      processedOrderIds: result.processedOrderIds,
-      errorOrderIds: result.errorOrderIds,
+      reconcile: {
+        processed: result.processed,
+        skipped: result.skipped,
+        errors: result.errors,
+        processedOrderIds: result.processedOrderIds,
+        errorOrderIds: result.errorOrderIds,
+      },
+      manualAutoComplete: {
+        processed: manualResult.processed,
+        skipped: manualResult.skipped,
+        errors: manualResult.errors,
+        processedOrderIds: manualResult.processedOrderIds,
+        errorOrderIds: manualResult.errorOrderIds,
+      },
       timestamp: new Date().toISOString(),
     });
   } catch (error: any) {

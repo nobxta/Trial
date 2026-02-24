@@ -1,13 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { Loader2, Mail } from "lucide-react";
+import { Loader2, Mail, CheckCircle2 } from "lucide-react";
 
-export default function SignInPage() {
+function SignInForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -16,6 +17,15 @@ export default function SignInPage() {
   const [resendLoading, setResendLoading] = useState(false);
   const [resendSuccess, setResendSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [justVerified, setJustVerified] = useState(false);
+
+  useEffect(() => {
+    if (searchParams.get("verified") === "1") {
+      setJustVerified(true);
+      // Clear the query so the banner doesn't persist on refresh
+      router.replace("/sign-in", { scroll: false });
+    }
+  }, [searchParams, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,8 +105,12 @@ export default function SignInPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#050505] text-[#d4d4d4] flex items-center justify-center px-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen bg-gradient-to-br from-[#050505] via-[#0a0a0a] to-[#050505] text-[#d4d4d4] flex items-center justify-center px-4 relative overflow-hidden">
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/5 rounded-full blur-3xl animate-pulse" style={{ animationDelay: "1s" }} />
+      </div>
+      <div className="w-full max-w-md relative z-10">
         <div className="flex justify-center mb-8">
           <Link href="/" className="flex items-center gap-2">
             <Image
@@ -109,40 +123,51 @@ export default function SignInPage() {
           </Link>
         </div>
 
-        <div className="glass-panel rounded-2xl p-8">
-          <h1 className="text-2xl font-semibold text-white mb-2">Sign In</h1>
+        <div className="glass-panel rounded-2xl p-8 backdrop-blur-xl border border-white/10 shadow-2xl">
+          <h1 className="text-2xl font-semibold text-white mb-2">Sign in</h1>
           <p className="text-sm text-neutral-400 mb-6">
             Enter your credentials to access your account
           </p>
 
+          {justVerified && (
+            <div className="mb-4 p-4 rounded-xl bg-green-500/10 border border-green-500/20 flex items-start gap-3">
+              <CheckCircle2 className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-green-300">Your email is verified.</p>
+                <p className="text-xs text-green-400/90 mt-0.5">You can sign in now.</p>
+              </div>
+            </div>
+          )}
+
           {error && (
-            <div className={`mb-4 p-3 rounded-lg border text-sm ${
-              needsVerification 
-                ? "bg-yellow-500/10 border-yellow-500/20 text-yellow-400"
+            <div className={`mb-4 p-4 rounded-xl border text-sm flex items-start gap-2 ${
+              needsVerification
+                ? "bg-amber-500/10 border-amber-500/20 text-amber-300"
                 : "bg-red-500/10 border-red-500/20 text-red-400"
             }`}>
-              {error}
+              <span className="flex-1">{error}</span>
             </div>
           )}
 
           {needsVerification && (
-            <div className="mb-4 p-4 rounded-lg bg-blue-500/10 border border-blue-500/20">
+            <div className="mb-4 p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
               <div className="flex items-start gap-3">
                 <Mail className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
                 <div className="flex-1">
                   <p className="text-sm text-blue-300 mb-2">
-                    Your email address needs to be verified before you can sign in.
+                    Verify your email before you can sign in. Check your inbox for the verification link.
                   </p>
                   <button
+                    type="button"
                     onClick={handleResendVerification}
                     disabled={resendLoading}
                     className="text-sm text-blue-400 hover:text-blue-300 underline disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {resendLoading ? "Sending..." : "Resend verification email"}
+                    {resendLoading ? "Sending…" : "Resend verification email"}
                   </button>
                   {resendSuccess && (
                     <p className="text-xs text-green-400 mt-2">
-                      ✓ Verification email sent! Please check your inbox.
+                      Verification email sent. Check your inbox.
                     </p>
                   )}
                 </div>
@@ -150,7 +175,7 @@ export default function SignInPage() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-neutral-300 mb-2">
                 Email
@@ -161,7 +186,7 @@ export default function SignInPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-3.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-colors"
                 placeholder="your@email.com"
               />
             </div>
@@ -176,7 +201,7 @@ export default function SignInPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-3.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-colors"
                 placeholder="••••••••"
               />
             </div>
@@ -184,15 +209,15 @@ export default function SignInPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Signing in...
+                  Signing in…
                 </>
               ) : (
-                "Sign In"
+                "Sign in"
               )}
             </button>
           </form>
@@ -206,6 +231,28 @@ export default function SignInPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function SignInFallback() {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-[#050505] via-[#0a0a0a] to-[#050505] text-[#d4d4d4] flex items-center justify-center px-4 relative overflow-hidden">
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/5 rounded-full blur-3xl animate-pulse" style={{ animationDelay: "1s" }} />
+      </div>
+      <div className="w-full max-w-md relative z-10 flex justify-center items-center">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
+      </div>
+    </div>
+  );
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense fallback={<SignInFallback />}>
+      <SignInForm />
+    </Suspense>
   );
 }
 

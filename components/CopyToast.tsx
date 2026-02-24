@@ -2,9 +2,11 @@
 
 interface CopyToastProps {
   visible: boolean;
+  /** Message from textConfig, e.g. orderPageText.generic.copied */
+  message?: string;
 }
 
-export default function CopyToast({ visible }: CopyToastProps) {
+export default function CopyToast({ visible, message = "Copied" }: CopyToastProps) {
   if (!visible) return null;
 
   return (
@@ -13,7 +15,7 @@ export default function CopyToast({ visible }: CopyToastProps) {
       role="status"
       aria-live="polite"
     >
-      Copied to clipboard
+      {message}
     </div>
   );
 }

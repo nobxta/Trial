@@ -1,21 +1,8 @@
 {
   "crons": [
-    {
-      "path": "/api/cron/process-email-queue",
-      "schedule": "0 4 * * *"
-    },
-    {
-      "path": "/api/cron/reconcile-orders",
-      "schedule": "0 5 * * *"
-    },
-    {
-      "path": "/api/cron/update-prices",
-      "schedule": "0 2 * * *"
-    },
-    {
-      "path": "/api/cron/update-exchange-limits",
-      "schedule": "0 3 * * *"
-    }
+    { "path": "/api/cron/process-email-queue", "schedule": "0 4 * * *" },
+    { "path": "/api/cron/reconcile-orders", "schedule": "*/5 * * * *" },
+    { "path": "/api/cron/update-prices", "schedule": "0 2 * * *" },
+    { "path": "/api/cron/update-exchange-limits", "schedule": "0 3 * * *" }
   ]
 }
-

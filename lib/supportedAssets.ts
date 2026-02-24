@@ -200,11 +200,13 @@ export function getUniqueCoinGeckoIds(): string[] {
   return Array.from(ids);
 }
 
-export function getPopularAssetNetworks(limit: number = 6): SupportedAssetNetwork[] {
-  // Popular: BTC, ETH, USDT (ERC20), USDT (TRC20), USDC (ERC20), SOL
-  const popularIds = new Set(['btc', 'eth', 'usdterc20', 'usdttrc20', 'usdcerc20', 'sol']);
-  return getEnabledAssetNetworks()
-    .filter(asset => popularIds.has(asset.id))
+export function getPopularAssetNetworks(limit: number = 7): SupportedAssetNetwork[] {
+  // Top crypto order for selector: BTC, ETH, SOL, BSC (BNB), Tron (TRX), Litecoin, Doge
+  const popularIdOrder = ['btc', 'eth', 'sol', 'bnb', 'trx', 'ltc', 'doge'];
+  const enabled = getEnabledAssetNetworks();
+  return popularIdOrder
+    .map(id => enabled.find(a => a.id === id))
+    .filter((asset): asset is SupportedAssetNetwork => asset != null)
     .slice(0, limit);
 }
 

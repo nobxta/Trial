@@ -8,7 +8,7 @@ export default function Footer() {
   return (
     <footer className="border-t border-white/10 bg-[#050505]/95 backdrop-blur-sm relative">
       {/* Protected Background Image */}
-      <div 
+      <div
         className="absolute inset-0 protected-bg opacity-20"
         style={{
           backgroundImage: 'url(/images/night-sky-scene-art-2q.jpg)',

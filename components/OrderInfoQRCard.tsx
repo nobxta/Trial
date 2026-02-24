@@ -1,12 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Copy, Check, Clock } from "lucide-react";
-
-const CARD_CLASS =
-  "rounded-lg border border-white/5 bg-[#12161f] p-6 md:p-8 h-full flex flex-col";
-
-const LABEL_CLASS = "text-slate-500 text-[11px] uppercase tracking-wider shrink-0 min-w-[100px]";
+import { Copy, Check, Timer, ShieldCheck, Zap, AlarmClock } from "lucide-react";
 
 interface OrderInfoQRCardProps {
   orderId: string;
@@ -15,18 +10,14 @@ interface OrderInfoQRCardProps {
   orderType: string;
   isExpired: boolean;
   slim?: boolean;
-  /** When false, hide time remaining/expired (timer only applies until first confirmation) */
   showTimeRemaining?: boolean;
-  /** User-facing order status (e.g. "Waiting for payment") */
   status?: string;
-  /** Optional fee line, e.g. "Included in rate" or "—" */
   feeLabel?: string;
-}
-
-function formatTime(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  compact?: boolean;
+  /** fixed | floating — from backend */
+  rateMode?: 'fixed' | 'floating' | null;
+  /** true when fixed rate locked at provider */
+  providerRateLocked?: boolean;
 }
 
 export default function OrderInfoQRCard({
@@ -35,15 +26,13 @@ export default function OrderInfoQRCard({
   createdAt,
   orderType,
   isExpired,
-  slim = false,
   showTimeRemaining = true,
-  status,
-  feeLabel,
+  rateMode = null,
+  providerRateLocked = false,
 }: OrderInfoQRCardProps) {
   const [copiedOrderId, setCopiedOrderId] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(initialTimeRemaining);
 
-  // Timer only runs while awaiting deposit. Clear as soon as status leaves NEW/AWAITING_DEPOSIT (showTimeRemaining becomes false).
   useEffect(() => {
     if (!showTimeRemaining || isExpired) {
       setTimeRemaining(0);
@@ -65,66 +54,222 @@ export default function OrderInfoQRCard({
     }
   };
 
-  const timeStr = formatTime(timeRemaining);
-  const isZeroTime = showTimeRemaining && !isExpired && timeRemaining === 0;
+  const minutes = Math.floor(timeRemaining / 60);
+  const seconds = timeRemaining % 60;
+  const isLowTime = timeRemaining < 120 && timeRemaining > 0;
+  const isZeroTime = timeRemaining === 0;
 
   const createdStr = createdAt.toLocaleString("en-US", {
     month: "short",
     day: "numeric",
-    year: "numeric",
     hour: "numeric",
     minute: "2-digit",
   });
 
+  const timerBgColor = isExpired || isZeroTime || isLowTime ? '#EF4444' : '#F59E0B';
+  const timerBgSoft = isExpired || isZeroTime || isLowTime ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)';
+  const timerBorderColor = isExpired || isZeroTime || isLowTime ? 'rgba(239, 68, 68, 0.2)' : 'rgba(245, 158, 11, 0.2)';
+
   return (
-    <div className={CARD_CLASS + " min-w-0 overflow-visible text-center md:text-left items-center md:items-stretch"}>
-      <div className={`${slim ? "space-y-5" : "space-y-4"} text-sm min-w-0 w-full flex flex-col`}>
-        <div className="flex justify-between items-center gap-2 min-w-0">
-          <span className={LABEL_CLASS}>Order ID</span>
-          <div className="flex items-center gap-1 min-w-0 flex-1 justify-end overflow-hidden">
-            <span className="font-mono text-white truncate text-xs font-medium">{orderId}</span>
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); copyOrderId(); }}
-              className="shrink-0 min-h-[28px] min-w-[28px] flex items-center justify-center rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition-all"
-              aria-label="Copy Order ID"
-            >
-              {copiedOrderId ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
-            </button>
-          </div>
+    <div 
+      className="rounded-[20px] border border-white/10 bg-[#12161F] p-6 h-full flex flex-col shadow-[0_4px_24px_rgba(0,0,0,0.2)]"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between mb-5">
+        <h3 
+          className="text-white font-bold text-base"
+          style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}
+        >
+          Order Details
+        </h3>
+        <div 
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1A1F2B]"
+        >
+          <span 
+            className="text-xs font-medium"
+            style={{ fontFamily: 'Inter, sans-serif', color: '#64748B' }}
+          >
+            ID:
+          </span>
+          <span 
+            className="text-xs font-semibold text-white"
+            style={{ fontFamily: 'JetBrains Mono, monospace' }}
+          >
+            {orderId}
+          </span>
+          <button onClick={copyOrderId} className="ml-1">
+            {copiedOrderId ? (
+              <Check className="w-3.5 h-3.5 text-[#22C55E]" />
+            ) : (
+              <Copy className="w-3.5 h-3.5 text-[#64748B] hover:text-white transition-colors" />
+            )}
+          </button>
         </div>
-        {showTimeRemaining && (
-          <div className="flex justify-between items-center gap-2 min-w-0">
-            <span className={LABEL_CLASS}>Time remaining</span>
-            <span
-              className={`font-mono inline-flex items-center gap-1 text-sm font-semibold ${isExpired || isZeroTime ? "text-red-500/90" : "text-[#00ffa3]"}`}
-            >
-              {!isExpired && <Clock className="w-4 h-4 text-slate-500 shrink-0" />}
-              {isExpired ? "Expired" : timeStr}
-            </span>
-          </div>
-        )}
-        <div className="flex justify-between items-center gap-2 min-w-0">
-          <span className={LABEL_CLASS}>Order type</span>
-          <span className="text-white text-xs sm:text-sm font-medium">{orderType}</span>
-        </div>
-        <div className="flex justify-between items-center gap-2 min-w-0">
-          <span className={LABEL_CLASS}>Created</span>
-          <span className="text-white text-xs sm:text-sm font-medium truncate">{createdStr}</span>
-        </div>
-        {status != null && status !== "" && (
-          <div className="flex justify-between items-center gap-2 min-w-0">
-            <span className={LABEL_CLASS}>Status</span>
-            <span className="text-white text-xs sm:text-sm font-medium break-words text-right min-w-0">{status}</span>
-          </div>
-        )}
-        {feeLabel != null && feeLabel !== "" && (
-          <div className="flex justify-between items-start gap-2 min-w-0">
-            <span className={LABEL_CLASS}>Network fee</span>
-            <span className="text-white text-xs sm:text-sm font-medium text-right break-words min-w-0">{feeLabel}</span>
-          </div>
-        )}
       </div>
+
+      {/* Details Grid */}
+      <div className="flex gap-4 mb-5">
+        {/* Creation time */}
+        <div className="flex-1 flex flex-col gap-2 p-4 rounded-xl bg-[#1A1F2B]">
+          <div 
+            className="w-8 h-8 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(37, 99, 235, 0.1)' }}
+          >
+            <Timer className="w-4 h-4 text-[#2563EB]" />
+          </div>
+          <span 
+            className="text-[11px] font-medium"
+            style={{ fontFamily: 'Inter, sans-serif', color: '#64748B' }}
+          >
+            Creation time
+          </span>
+          <span 
+            className="text-sm font-semibold text-white"
+            style={{ fontFamily: 'Inter, sans-serif' }}
+          >
+            {createdStr}
+          </span>
+        </div>
+
+        {/* Order Type + Rate mode description */}
+        <div className="flex-1 flex flex-col gap-2 p-4 rounded-xl bg-[#1A1F2B]">
+          <div 
+            className="w-8 h-8 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(34, 197, 94, 0.1)' }}
+          >
+            <ShieldCheck className="w-4 h-4 text-[#22C55E]" />
+          </div>
+          <span 
+            className="text-[11px] font-medium"
+            style={{ fontFamily: 'Inter, sans-serif', color: '#64748B' }}
+          >
+            Order Type
+          </span>
+          <span 
+            className="text-sm font-semibold text-white"
+            style={{ fontFamily: 'Inter, sans-serif' }}
+          >
+            {orderType}
+          </span>
+          {rateMode === 'fixed' && providerRateLocked && (
+            <span className="text-[10px] text-[#94A3B8]" style={{ fontFamily: 'Inter, sans-serif' }}>
+              Rate locked
+            </span>
+          )}
+          {rateMode === 'floating' && (
+            <span className="text-[10px] text-[#94A3B8]" style={{ fontFamily: 'Inter, sans-serif' }}>
+              Rate confirmed after 1 confirmation
+            </span>
+          )}
+        </div>
+
+        {/* Network Fee */}
+        <div className="flex-1 flex flex-col gap-2 p-4 rounded-xl bg-[#1A1F2B]">
+          <div 
+            className="w-8 h-8 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(245, 158, 11, 0.1)' }}
+          >
+            <Zap className="w-4 h-4 text-[#F59E0B]" />
+          </div>
+          <span 
+            className="text-[11px] font-medium"
+            style={{ fontFamily: 'Inter, sans-serif', color: '#64748B' }}
+          >
+            Network Fee
+          </span>
+          <span 
+            className="text-sm font-semibold text-white"
+            style={{ fontFamily: 'Inter, sans-serif' }}
+          >
+            Included
+          </span>
+        </div>
+      </div>
+
+      {/* Timer Card */}
+      {showTimeRemaining && (
+        <div 
+          className="flex items-center justify-between p-4 px-5 rounded-2xl"
+          style={{ 
+            background: `linear-gradient(180deg, ${timerBgSoft} 0%, transparent 100%)`,
+            border: `1px solid ${timerBorderColor}`
+          }}
+        >
+          {/* Left side */}
+          <div className="flex items-center gap-3">
+            <div 
+              className="w-10 h-10 rounded-xl flex items-center justify-center"
+              style={{ backgroundColor: isExpired || isZeroTime || isLowTime ? 'rgba(239, 68, 68, 0.2)' : 'rgba(245, 158, 11, 0.2)' }}
+            >
+              <AlarmClock className="w-5 h-5" style={{ color: timerBgColor }} />
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <span 
+                className="text-[11px] font-medium"
+                style={{ fontFamily: 'Inter, sans-serif', color: timerBgColor }}
+              >
+                {isExpired ? 'Expired' : 'Time Remaining'}
+              </span>
+              <span 
+                className="text-sm font-semibold text-white"
+                style={{ fontFamily: 'Inter, sans-serif' }}
+              >
+                {isExpired ? 'Order has expired' : 'Complete your deposit before the timer expires.'}
+              </span>
+            </div>
+          </div>
+
+          {/* Right side - Timer display */}
+          {!isExpired && (
+            <div className="flex items-center gap-2">
+              {/* Minutes */}
+              <div 
+                className="flex flex-col items-center px-3 py-2 rounded-lg"
+                style={{ backgroundColor: timerBgColor }}
+              >
+                <span 
+                  className="text-xl font-bold"
+                  style={{ fontFamily: 'JetBrains Mono, monospace', color: '#0B0E14' }}
+                >
+                  {minutes.toString().padStart(2, '0')}
+                </span>
+                <span 
+                  className="text-[10px] font-medium"
+                  style={{ fontFamily: 'Inter, sans-serif', color: 'rgba(11, 14, 20, 0.6)' }}
+                >
+                  min
+                </span>
+              </div>
+              
+              <span 
+                className="text-xl font-bold"
+                style={{ fontFamily: 'JetBrains Mono, monospace', color: timerBgColor }}
+              >
+                :
+              </span>
+              
+              {/* Seconds */}
+              <div 
+                className="flex flex-col items-center px-3 py-2 rounded-lg"
+                style={{ backgroundColor: timerBgColor }}
+              >
+                <span 
+                  className="text-xl font-bold"
+                  style={{ fontFamily: 'JetBrains Mono, monospace', color: '#0B0E14' }}
+                >
+                  {seconds.toString().padStart(2, '0')}
+                </span>
+                <span 
+                  className="text-[10px] font-medium"
+                  style={{ fontFamily: 'Inter, sans-serif', color: 'rgba(11, 14, 20, 0.6)' }}
+                >
+                  sec
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
