@@ -102,13 +102,15 @@ function validateEnv(): void {
   // --- PUBLIC_BASE_URL (required in production for webhooks; no localhost when deployed) ---
   const publicBaseUrl = process.env.PUBLIC_BASE_URL?.trim();
   const isDeployedEnv = typeof process.env.VERCEL === 'string' || typeof process.env.VERCEL_URL === 'string';
-  if (isProduction) {
+  const isBuildPhase = process.env.NEXT_PHASE === 'phase-production-build';
+  if (isProduction && !isBuildPhase) {
     if (!publicBaseUrl) {
       errors.push(
         'PUBLIC_BASE_URL is required in production (e.g. https://yourdomain.com). Webhooks need a public URL.'
       );
     } else if (
       isDeployedEnv &&
+      publicBaseUrl &&
       (publicBaseUrl.includes('localhost') ||
         publicBaseUrl.includes('127.0.0.1') ||
         publicBaseUrl.includes('ngrok'))
@@ -132,13 +134,15 @@ function validateEnv(): void {
   const secure = port === 465 || process.env.SMTP_SECURE === 'true';
   const smtpHost = process.env.SMTP_HOST?.trim() || 'smtp.gmail.com';
 
+  const buildTimeBaseUrl =
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://placeholder.vercel.app';
   cached = {
     JWT_SECRET: jwtSecret || JWT_PLACEHOLDER,
     SUPABASE_URL: supabaseUrl || '',
     SUPABASE_SERVICE_ROLE_KEY: supabaseServiceKey || '',
     SUPABASE_ANON_KEY: supabaseAnonKey || '',
     PUBLIC_BASE_URL: isProduction
-      ? publicBaseUrl!
+      ? (publicBaseUrl || (isBuildPhase ? buildTimeBaseUrl : ''))
       : (publicBaseUrl || process.env.NEXT_PUBLIC_APP_URL?.trim() || 'http://localhost:3000'),
     NOWPAYMENTS_API_KEY_LIVE: npApiLive || '',
     NOWPAYMENTS_IPN_SECRET_LIVE: npIpnLive || '',
