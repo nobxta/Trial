@@ -201,6 +201,45 @@ export function getAdminStatusLabel(internalStatus: string | null): string {
 }
 
 /**
+ * Status priority for monotonic progression (higher = more advanced).
+ * Status must NEVER downgrade: we only allow transitions to same or higher priority.
+ * Used by RPC and polling to reject provider/polling updates that would regress state.
+ */
+export const STATUS_PRIORITY: Record<InternalStatus, number> = {
+  'NEW': 0,
+  'AWAITING_DEPOSIT': 1,
+  'CONFIRMING': 2,
+  'PAYMENT_CONFIRMED': 3,
+  'PROCESSING_BY_PROVIDER': 4,
+  'MANUAL_REVIEW': 4,
+  'DONE': 5,
+  'FAILED': 5,
+  'EXPIRED': 5,
+};
+
+/**
+ * Get numeric priority for an internal status (for no-downgrade checks).
+ * Unknown statuses get 0 (allow upgrade from anything).
+ */
+export function getStatusPriority(internalStatus: string | null | undefined): number {
+  if (!internalStatus) return 0;
+  return STATUS_PRIORITY[internalStatus as InternalStatus] ?? 0;
+}
+
+/**
+ * Returns true if transitioning from current to new would be a downgrade.
+ * Used to block polling/webhook from overwriting a higher status with a lower one.
+ */
+export function isStatusDowngrade(
+  currentInternalStatus: string | null | undefined,
+  newInternalStatus: string | null | undefined
+): boolean {
+  const current = getStatusPriority(currentInternalStatus);
+  const next = getStatusPriority(newInternalStatus);
+  return next < current;
+}
+
+/**
  * Check if order is in final state
  */
 export function isFinalStatus(status: string | null): boolean {

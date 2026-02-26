@@ -7,7 +7,7 @@ import {
 } from '@/lib/db-orders';
 import { notifyOrderStatus } from '@/lib/notifications';
 import { webhookLogger } from '@/lib/webhook-logger';
-import { mapProviderStatusToInternal, getUserFacingStatus, type InternalStatus } from '@/lib/status-mapping';
+import { mapProviderStatusToInternal, getUserFacingStatus, isStatusDowngrade, type InternalStatus } from '@/lib/status-mapping';
 import { recordOrderCompletion } from '@/lib/ledger';
 import { sendTelegramNotification } from '@/lib/telegram';
 import { getNowPaymentsConfig } from '@/lib/nowpayments-config';
@@ -292,6 +292,26 @@ export async function POST(request: NextRequest) {
     // Manual payout: when provider reports finished/success, do not set DONE; stop at PAYMENT_CONFIRMED so admin can pay user and mark completed.
     if (order.payoutMode === 'manual' && mappedStatus === 'DONE') {
       mappedStatus = 'PAYMENT_CONFIRMED';
+    }
+
+    const currentInternal = (order.internalStatus || order.status) as InternalStatus;
+    if (isStatusDowngrade(currentInternal, mappedStatus)) {
+      webhookLogger.info('Webhook would downgrade status; RPC will skip update (idempotency still claimed)', {
+        event: 'status_downgrade_blocked',
+        order_id: order.orderId,
+        payment_id: paymentId,
+        current_internal_status: currentInternal,
+        payment_status: paymentStatus,
+        attempted_internal_status: mappedStatus,
+        source: 'webhook',
+      });
+      paymentLogger.statusDowngradeBlocked({
+        order_id: order.orderId,
+        source: 'webhook',
+        current_internal_status: currentInternal,
+        attempted_internal_status: mappedStatus,
+        provider_status: paymentStatus,
+      });
     }
 
     // When provider sends outcome_amount (e.g. finished/confirming), store as final_receive_amount and to_amount (floating rate or fixed final)

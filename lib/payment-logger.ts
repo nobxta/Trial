@@ -207,6 +207,25 @@ export const paymentLogger = {
     );
   },
 
+  /** Status downgrade attempt blocked (polling or webhook). Detect regressions and webhook vs polling conflicts. */
+  statusDowngradeBlocked(data: {
+    order_id: string;
+    source: 'polling' | 'webhook';
+    current_internal_status: string;
+    attempted_internal_status: string;
+    provider_status?: string;
+  }) {
+    console.log(
+      JSON.stringify({
+        level: 'warn',
+        message: 'status_downgrade_blocked',
+        timestamp: new Date().toISOString(),
+        source: 'order_status_guard',
+        ...data,
+      })
+    );
+  },
+
   /** Runtime: notification function invoked for this order/status. */
   emailTriggeredForOrder(data: { order_id: string; status: string }) {
     console.log(

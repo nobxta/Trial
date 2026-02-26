@@ -12,6 +12,8 @@ export default function AdminSettingsPage() {
   const [sandboxCase, setSandboxCase] = useState<'success' | 'failed' | 'expired' | 'partially_paid'>('success');
   const [changingPaymentMode, setChangingPaymentMode] = useState(false);
   const [changingSandboxCase, setChangingSandboxCase] = useState(false);
+  const [orderPollingEnabled, setOrderPollingEnabled] = useState(true);
+  const [changingOrderPolling, setChangingOrderPolling] = useState(false);
   const [loading, setLoading] = useState(true);
   const [webhookDiag, setWebhookDiag] = useState<{
     expectedWebhookUrl?: string;
@@ -23,10 +25,11 @@ export default function AdminSettingsPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [envResponse, payoutModeResponse, paymentModeResponse, diagResponse] = await Promise.all([
+        const [envResponse, payoutModeResponse, paymentModeResponse, pollingResponse, diagResponse] = await Promise.all([
           fetch('/api/admin/settings/env'),
           fetch('/api/admin/settings/payout-mode'),
           fetch('/api/admin/settings/payment-mode'),
+          fetch('/api/admin/settings/order-polling'),
           fetch('/api/admin/system/webhook-diagnostics'),
         ]);
         
@@ -44,6 +47,11 @@ export default function AdminSettingsPage() {
           const data = await paymentModeResponse.json();
           setPaymentMode(data.paymentMode || 'live');
           setSandboxCase(data.sandboxCase || 'success');
+        }
+
+        if (pollingResponse.ok) {
+          const data = await pollingResponse.json();
+          setOrderPollingEnabled(data.orderPollingEnabled !== false);
         }
 
         if (diagResponse.ok) {
@@ -319,6 +327,68 @@ export default function AdminSettingsPage() {
               </div>
             </div>
           )}
+        </div>
+
+        <div>
+          <h2 className="text-lg font-semibold mb-4" style={{ color: 'var(--admin-text-primary)' }}>
+            Order status updates (polling)
+          </h2>
+          <p className="text-sm mb-3" style={{ color: 'var(--admin-text-muted)' }}>
+            When enabled, the order page will periodically sync status from NOWPayments (backup if webhooks are delayed). When disabled, the site relies purely on webhooks. Change takes effect immediately.
+          </p>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={async () => {
+                setChangingOrderPolling(true);
+                try {
+                  const res = await fetch('/api/admin/settings/order-polling', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: true }),
+                  });
+                  if (res.ok) setOrderPollingEnabled(true);
+                  else alert((await res.json()).error || 'Failed to update');
+                } catch (e) { alert('Error'); }
+                setChangingOrderPolling(false);
+              }}
+              disabled={changingOrderPolling || orderPollingEnabled}
+              className="admin-btn"
+              style={{
+                background: orderPollingEnabled ? 'var(--admin-primary)' : 'var(--admin-surface)',
+                color: orderPollingEnabled ? 'white' : 'var(--admin-text-secondary)',
+                opacity: (changingOrderPolling || orderPollingEnabled) ? 0.7 : 1,
+              }}
+            >
+              Enable Polling
+            </button>
+            <button
+              onClick={async () => {
+                setChangingOrderPolling(true);
+                try {
+                  const res = await fetch('/api/admin/settings/order-polling', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: false }),
+                  });
+                  if (res.ok) setOrderPollingEnabled(false);
+                  else alert((await res.json()).error || 'Failed to update');
+                } catch (e) { alert('Error'); }
+                setChangingOrderPolling(false);
+              }}
+              disabled={changingOrderPolling || !orderPollingEnabled}
+              className="admin-btn"
+              style={{
+                background: !orderPollingEnabled ? 'var(--admin-surface)' : 'var(--admin-surface)',
+                color: 'var(--admin-text-secondary)',
+                opacity: (changingOrderPolling || !orderPollingEnabled) ? 0.7 : 1,
+              }}
+            >
+              Rely on Webhooks Only
+            </button>
+          </div>
+          <div className="text-xs mt-2" style={{ color: 'var(--admin-text-muted)' }}>
+            Current: <strong>{orderPollingEnabled ? 'Polling enabled' : 'Webhooks only'}</strong>
+          </div>
         </div>
 
         <div>

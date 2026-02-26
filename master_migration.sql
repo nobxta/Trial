@@ -814,6 +814,25 @@ BEGIN
   RETURN to_jsonb(v_row);
 END; $$;
 
+-- 053: Status priority for no-downgrade rule (webhook/polling must never regress status)
+DO $$ BEGIN
+  CREATE OR REPLACE FUNCTION internal_status_priority(s text)
+  RETURNS int LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $inner$
+    SELECT CASE s
+      WHEN 'NEW' THEN 0 WHEN 'AWAITING_DEPOSIT' THEN 1 WHEN 'CONFIRMING' THEN 2
+      WHEN 'PAYMENT_CONFIRMED' THEN 3 WHEN 'PROCESSING_BY_PROVIDER' THEN 4 WHEN 'MANUAL_REVIEW' THEN 4
+      WHEN 'DONE' THEN 5 WHEN 'FAILED' THEN 5 WHEN 'EXPIRED' THEN 5
+      ELSE 0
+    END;
+  $inner$;
+  EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+DO $$ BEGIN
+  COMMENT ON FUNCTION internal_status_priority(text) IS 'Order status priority for no-downgrade rule. Higher = more advanced.';
+  EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+-- 053: process_webhook_status_update with no-downgrade guard (final states + priority; 054 order_polling_enabled in seed below)
 CREATE OR REPLACE FUNCTION process_webhook_status_update(p_params jsonb)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE
@@ -825,6 +844,8 @@ DECLARE
   v_manual_auto_complete_at timestamptz;
   v_final_receive_amount decimal;
   v_to_amount decimal;
+  v_old_pri int;
+  v_new_pri int;
 BEGIN
   INSERT INTO webhook_idempotency (payment_id, payment_status, order_id)
   VALUES (p_params->>'payment_id', p_params->>'payment_status', p_params->>'order_id')
@@ -839,6 +860,15 @@ BEGIN
   v_new_internal_status := NULLIF(TRIM(p_params->>'internal_status'), '');
   v_final_receive_amount := (p_params->>'final_receive_amount')::decimal;
   v_to_amount := (p_params->>'to_amount')::decimal;
+  -- No-downgrade: status must never go backward (e.g. PAYMENT_CONFIRMED -> AWAITING_DEPOSIT)
+  IF v_new_internal_status IS NOT NULL THEN
+    v_old_pri := internal_status_priority(v_old_internal_status);
+    v_new_pri := internal_status_priority(v_new_internal_status);
+    IF v_new_pri < v_old_pri THEN
+      SELECT * INTO v_row FROM orders WHERE order_id = p_params->>'order_id';
+      RETURN jsonb_build_object('already_processed', false, 'order', to_jsonb(v_row));
+    END IF;
+  END IF;
   IF v_payout_mode = 'manual' AND v_new_internal_status IN ('PAYMENT_CONFIRMED', 'PROCESSING_BY_PROVIDER', 'MANUAL_REVIEW') THEN
     v_manual_auto_complete_at := NOW() + (3 + floor(random() * 13)) * interval '1 minute';
   ELSE
@@ -867,6 +897,7 @@ BEGIN
   END IF;
   RETURN jsonb_build_object('already_processed', false, 'order', to_jsonb(v_row));
 END; $$;
+COMMENT ON FUNCTION process_webhook_status_update(jsonb) IS 'Atomic webhook processing. Final states never overwritten. Status never downgrades (priority-based). Updates final_receive_amount and to_amount when provided.';
 
 -- -----------------------------------------------------------------------------
 -- 9. ROW LEVEL SECURITY & POLICIES
@@ -992,7 +1023,8 @@ VALUES
   ('maintenance_mode', '{"enabled": false}'::jsonb, NOW()),
   ('payout_mode', '{"mode": "manual"}'::jsonb, NOW()),
   ('payment_mode', '{"mode": "live"}'::jsonb, NOW()),
-  ('sandbox_case', '{"case": "success"}'::jsonb, NOW())
+  ('sandbox_case', '{"case": "success"}'::jsonb, NOW()),
+  ('order_polling_enabled', '{"enabled": true}'::jsonb, NOW())
 ON CONFLICT (key) DO NOTHING;
 
 INSERT INTO email_settings (key, value)

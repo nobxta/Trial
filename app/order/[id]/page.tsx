@@ -193,7 +193,7 @@ export default function OrderPage({ params }: { params: { id: string } }) {
   const fetchOrder = useCallback(async (): Promise<void> => {
     setIsSyncing(true);
     try {
-      const res = await fetch(`/api/order/${orderId}`);
+      const res = await fetch(`/api/order/${orderId}`, { cache: 'no-store' });
 
       if (!res.ok) {
         if (res.status === 404) {

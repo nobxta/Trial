@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOrderByOrderId, processWebhookStatusUpdateAtomic, updateOrderStatus } from '@/lib/db-orders';
-import { getCurrentStep, mapProviderStatusToInternal, getUserFacingStatus, type InternalStatus } from '@/lib/status-mapping';
+import { getCurrentStep, mapProviderStatusToInternal, getUserFacingStatus, isStatusDowngrade, type InternalStatus } from '@/lib/status-mapping';
 import { maybeApplySandboxSimulation } from '@/lib/sandbox-simulation';
 import { getPaymentStatus } from '@/lib/nowpayments';
 import { notifyOrderStatus } from '@/lib/notifications';
 import { paymentLogger } from '@/lib/payment-logger';
 import { getNowPaymentsApiUrl } from '@/lib/env';
+import { getOrderPollingEnabled } from '@/lib/order-polling-setting';
+
+export const dynamic = 'force-dynamic';
 
 const POLL_SYNC_THROTTLE_MS = 15_000;
 const POLL_SYNC_STATUSES: InternalStatus[] = ['NEW', 'AWAITING_DEPOSIT', 'CONFIRMING'];
@@ -65,10 +68,16 @@ export async function GET(
       }
     }
 
-    // Polling-based detection: for non-final orders, sync from provider if throttle allows (once per 15s).
-    // Skip polling when payment window has passed (expiresAt in past) or order is in a final state — never hit provider after expiry.
+    // Polling-based detection: only when enabled in Admin → Settings. Sync from provider if throttle allows.
+    // NEVER overwrite a higher internal status with a lower one (webhook-confirmed states are authoritative).
     const paymentWindowClosed = order.expiresAt != null && Date.now() > new Date(order.expiresAt).getTime();
-    if (order.paymentId && POLL_SYNC_STATUSES.includes(order.internalStatus as InternalStatus) && !paymentWindowClosed) {
+    const pollingEnabled = await getOrderPollingEnabled();
+    if (
+      pollingEnabled &&
+      order.paymentId &&
+      POLL_SYNC_STATUSES.includes(order.internalStatus as InternalStatus) &&
+      !paymentWindowClosed
+    ) {
       const updatedAtMs = new Date(order.updatedAt).getTime();
       if (Date.now() - updatedAtMs >= POLL_SYNC_THROTTLE_MS) {
         paymentLogger.pollJobStarted({
@@ -97,63 +106,81 @@ export async function GET(
           if (rejected) {
             orderPollLog('order_poll_sync_rejected', orderId, { reason: 'payment_id_mismatch' });
           } else {
-          const paymentId = storedPaymentId;
-          paymentLogger.paymentIdChecked({
-            payment_id_suffix: paymentLogger.maskPaymentId(paymentId),
-            order_id: orderId,
-            mode: mode ?? 'legacy_dual',
-          });
-          let payment: { payment_status?: string; pay_address?: string; payin_address?: string; payin_hash?: string; payout_hash?: string };
-          if (mode) {
-            payment = await getPaymentStatus(paymentId, mode);
-          } else {
-            try {
-              payment = await getPaymentStatus(paymentId, 'sandbox');
-            } catch {
-              payment = await getPaymentStatus(paymentId, 'live');
-            }
-          }
-          const providerStatus = payment.payment_status ?? '';
-          paymentLogger.providerStatusReturned({
-            payment_id_suffix: paymentLogger.maskPaymentId(paymentId),
-            order_id: orderId,
-            provider_status_returned: providerStatus || null,
-          });
-          if (providerStatus) {
-            let mappedStatus = mapProviderStatusToInternal(providerStatus) as InternalStatus;
-            if (order.payoutMode === 'manual' && mappedStatus === 'DONE') {
-              mappedStatus = 'PAYMENT_CONFIRMED';
-            }
-            const result = await processWebhookStatusUpdateAtomic({
-              paymentId,
-              paymentStatus: providerStatus,
-              orderId: order.orderId,
-              internalStatus: mappedStatus,
-              userStatus: getUserFacingStatus(mappedStatus),
-              providerStatus,
-              statusSource: 'polling',
-              fromAddress: payment.pay_address ?? payment.payin_address,
-              payinHash: payment.payin_hash,
-              payoutHash: payment.payout_hash,
+            const paymentId = storedPaymentId;
+            paymentLogger.paymentIdChecked({
+              payment_id_suffix: paymentLogger.maskPaymentId(paymentId),
+              order_id: orderId,
+              mode: mode ?? 'legacy_dual',
             });
-            if (!result.alreadyProcessed) {
-              paymentLogger.dbStatusUpdated({
-                order_id: orderId,
-                internal_status: mappedStatus,
-                source: 'order_get_poll',
-              });
-              orderPollLog('order_poll_sync_updated', orderId, {
-                provider_status: providerStatus,
-                internal_status: mappedStatus,
-              });
-              if (POLL_SYNC_NOTIFY_STATUSES.includes(mappedStatus)) {
-                notifyOrderStatus(order.userId, order.orderId, mappedStatus.toLowerCase(), request).catch((err) => {
-                  console.error('[Order GET] notifyOrderStatus failed:', err?.message ?? err);
-                });
+            let payment: { payment_status?: string; pay_address?: string; payin_address?: string; payin_hash?: string; payout_hash?: string };
+            if (mode) {
+              payment = await getPaymentStatus(paymentId, mode);
+            } else {
+              try {
+                payment = await getPaymentStatus(paymentId, 'sandbox');
+              } catch {
+                payment = await getPaymentStatus(paymentId, 'live');
               }
-              order = await getOrderByOrderId(orderId) ?? order;
             }
-          }
+            const providerStatus = payment.payment_status ?? '';
+            paymentLogger.providerStatusReturned({
+              payment_id_suffix: paymentLogger.maskPaymentId(paymentId),
+              order_id: orderId,
+              provider_status_returned: providerStatus || null,
+            });
+            if (providerStatus) {
+              let mappedStatus = mapProviderStatusToInternal(providerStatus) as InternalStatus;
+              if (order.payoutMode === 'manual' && mappedStatus === 'DONE') {
+                mappedStatus = 'PAYMENT_CONFIRMED';
+              }
+              const currentInternal = order.internalStatus as InternalStatus;
+              // Never downgrade: polling must not overwrite webhook-confirmed (or any higher) status.
+              if (isStatusDowngrade(currentInternal, mappedStatus)) {
+                orderPollLog('status_downgrade_blocked', orderId, {
+                  current_internal_status: currentInternal,
+                  provider_status: providerStatus,
+                  attempted_internal_status: mappedStatus,
+                  source: 'polling',
+                });
+                paymentLogger.statusDowngradeBlocked({
+                  order_id: orderId,
+                  source: 'polling',
+                  current_internal_status: currentInternal,
+                  attempted_internal_status: mappedStatus,
+                  provider_status: providerStatus,
+                });
+              } else {
+                const result = await processWebhookStatusUpdateAtomic({
+                  paymentId,
+                  paymentStatus: providerStatus,
+                  orderId: order.orderId,
+                  internalStatus: mappedStatus,
+                  userStatus: getUserFacingStatus(mappedStatus),
+                  providerStatus,
+                  statusSource: 'polling',
+                  fromAddress: payment.pay_address ?? payment.payin_address,
+                  payinHash: payment.payin_hash,
+                  payoutHash: payment.payout_hash,
+                });
+                if (!result.alreadyProcessed) {
+                  paymentLogger.dbStatusUpdated({
+                    order_id: orderId,
+                    internal_status: mappedStatus,
+                    source: 'order_get_poll',
+                  });
+                  orderPollLog('order_poll_sync_updated', orderId, {
+                    provider_status: providerStatus,
+                    internal_status: mappedStatus,
+                  });
+                  if (POLL_SYNC_NOTIFY_STATUSES.includes(mappedStatus)) {
+                    notifyOrderStatus(order.userId, order.orderId, mappedStatus.toLowerCase(), request).catch((err) => {
+                      console.error('[Order GET] notifyOrderStatus failed:', err?.message ?? err);
+                    });
+                  }
+                  order = await getOrderByOrderId(orderId) ?? order;
+                }
+              }
+            }
           }
         } catch (pollErr: any) {
           orderPollLog('order_poll_sync_error', orderId, { error: pollErr?.message ?? String(pollErr) });

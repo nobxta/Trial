@@ -64,7 +64,7 @@ function SignInForm() {
       if (data.isAdmin) {
         router.push("/admin");
       } else {
-        router.push("/account/personal");
+        router.push("/");
       }
       router.refresh();
     } catch (err: any) {

@@ -1,14 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getExchangeLimits } from '@/lib/nowpayments';
-import { getEnabledCryptos } from '@/lib/supported-cryptos';
 import { upsertExchangeLimits, getUniqueCurrencyPairs, areLimitsStale } from '@/lib/db-exchange-limits';
 
 /**
- * Cron: Update exchange limits daily (e.g. 3 AM UTC).
+ * Cron: Refresh exchange limits for cached pairs only (no full matrix).
  * Call via external scheduler (e.g. cron-job.org). See docs/EXTERNAL_CRON_SETUP.md.
- * Fetches limits for all supported currency pairs from NOWPayments and updates exchange_limits.
+ *
+ * Strategy:
+ * - Only updates pairs that already exist in exchange_limits and are stale.
+ * - Does NOT generate all N×N pairs (avoids 6000+ API calls and timeouts).
+ * - New pairs are filled on-demand when users request them (getExchangeLimitsWithFallback).
+ * - Concurrency cap and per-run pair cap keep execution within serverless limits.
+ *
  * Security: Requires Authorization: Bearer CRON_SECRET.
  */
+
+const MAX_PAIRS_PER_RUN = 250;
+const CONCURRENCY = 10;
+
+type PairResult = { ok: true } | { ok: false; notConvertible: boolean; message: string };
+
+/** Run at most `concurrency` promises at a time; returns results in same order as items. */
+async function runWithLimit<T>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<PairResult>
+): Promise<PairResult[]> {
+  const results: PairResult[] = new Array(items.length);
+  let next = 0;
+  async function worker(): Promise<void> {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i]);
+    }
+  }
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const authHeader = request.headers.get('authorization');
@@ -25,116 +55,87 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    console.log('🔄 [Cron] Starting exchange limits update...');
+    console.log('🔄 [Cron] Starting exchange limits update (stale pairs only)...');
 
-    // Get all enabled cryptos
-    const allCryptos = getEnabledCryptos();
-    
-    if (allCryptos.length === 0) {
-      console.warn('⚠️  [Cron] No cryptos found');
+    const existingPairs = await getUniqueCurrencyPairs();
+    if (existingPairs.length === 0) {
+      console.log('📊 [Cron] No cached pairs yet; nothing to refresh. New pairs are cached on first user request.');
       return NextResponse.json({
-        success: false,
-        error: 'No supported cryptocurrencies found',
+        success: true,
+        updated: 0,
+        errors: 0,
+        total: 0,
+        message: 'No cached pairs. Limits are filled on-demand.',
       });
     }
 
-    // Get existing pairs from cache (to refresh stale ones)
-    const existingPairs = await getUniqueCurrencyPairs();
-    
-    // Build list of pairs to update:
-    // 1. All possible pairs from enabled cryptos (for initial population)
-    // 2. Existing pairs that are stale
-    const pairsToUpdate = new Set<string>();
-    const pairsList: Array<{ from: string; to: string; isFixedRate: boolean }> = [];
-
-    // Add all possible pairs (both fixed and floating rate)
-    for (const fromCrypto of allCryptos) {
-      for (const toCrypto of allCryptos) {
-        if (fromCrypto.id === toCrypto.id) continue; // Skip same currency
-        
-        // Add fixed rate pair
-        const fixedKey = `${fromCrypto.id}:${toCrypto.id}:true`;
-        if (!pairsToUpdate.has(fixedKey)) {
-          pairsToUpdate.add(fixedKey);
-          pairsList.push({
-            from: fromCrypto.id,
-            to: toCrypto.id,
-            isFixedRate: true,
-          });
-        }
-
-        // Add floating rate pair
-        const floatKey = `${fromCrypto.id}:${toCrypto.id}:false`;
-        if (!pairsToUpdate.has(floatKey)) {
-          pairsToUpdate.add(floatKey);
-          pairsList.push({
-            from: fromCrypto.id,
-            to: toCrypto.id,
-            isFixedRate: false,
-          });
-        }
-      }
-    }
-
-    // Also check existing pairs - if stale, add to update list
+    const stalePairs: Array<{ from: string; to: string; isFixedRate: boolean }> = [];
     for (const pair of existingPairs) {
-      const stale = await areLimitsStale(pair.from, pair.to, pair.isFixedRate, 10);
-      if (stale) {
-        const key = `${pair.from}:${pair.to}:${pair.isFixedRate}`;
-        if (!pairsToUpdate.has(key)) {
-          pairsToUpdate.add(key);
-          pairsList.push(pair);
+      const stale = await areLimitsStale(pair.from, pair.to, pair.isFixedRate, 60 * 24); // 24h
+      if (stale) stalePairs.push(pair);
+    }
+
+    const toUpdate = stalePairs.slice(0, MAX_PAIRS_PER_RUN);
+    if (toUpdate.length === 0) {
+      console.log('✅ [Cron] No stale pairs to update.');
+      return NextResponse.json({
+        success: true,
+        updated: 0,
+        errors: 0,
+        total: existingPairs.length,
+      });
+    }
+
+    console.log(`📊 [Cron] Updating ${toUpdate.length} stale pairs (capped at ${MAX_PAIRS_PER_RUN}); ${existingPairs.length} total cached.`);
+
+    const start = Date.now();
+
+    const processOne = async (pair: { from: string; to: string; isFixedRate: boolean }): Promise<PairResult> => {
+      try {
+        const limits = await getExchangeLimits(pair.from, pair.to, pair.isFixedRate);
+        await upsertExchangeLimits(pair.from, pair.to, pair.isFixedRate, limits);
+        return { ok: true };
+      } catch (error: any) {
+        const msg = error?.message ?? '';
+        const notConvertible = /not convert(able|ible)/i.test(msg);
+        if (!notConvertible) {
+          console.error(`❌ [Cron] Failed ${pair.from}->${pair.to} (${pair.isFixedRate ? 'fixed' : 'float'}):`, msg);
         }
+        return { ok: false, notConvertible, message: msg };
       }
+    };
+
+    const results = await runWithLimit(toUpdate, CONCURRENCY, processOne);
+
+    const successCount = results.filter((r) => r.ok === true).length;
+    const errorCount = results.filter((r) => r.ok === false).length;
+    const notConvertible = results
+      .filter((r): r is { ok: false; notConvertible: true; message: string } => r.ok === false && r.notConvertible)
+      .length;
+
+    if (notConvertible > 0) {
+      console.warn(`⚠️ [Cron] ${notConvertible} pair(s) not supported by provider (skipped).`);
     }
 
-    console.log(`📊 [Cron] Updating limits for ${pairsList.length} currency pairs...`);
-
-    let successCount = 0;
-    let errorCount = 0;
-
-    // Fetch and update limits for each pair (with rate limiting)
-    // Process in batches to avoid overwhelming NOWPayments API
-    const batchSize = 5;
-    for (let i = 0; i < pairsList.length; i += batchSize) {
-      const batch = pairsList.slice(i, i + batchSize);
-      
-      await Promise.all(
-        batch.map(async (pair) => {
-          try {
-            const limits = await getExchangeLimits(pair.from, pair.to, pair.isFixedRate);
-            await upsertExchangeLimits(pair.from, pair.to, pair.isFixedRate, limits);
-            successCount++;
-          } catch (error: any) {
-            console.error(`❌ [Cron] Failed to update limits for ${pair.from}->${pair.to} (${pair.isFixedRate ? 'fixed' : 'float'}):`, error.message);
-            errorCount++;
-          }
-        })
-      );
-
-      // Small delay between batches to avoid rate limiting
-      if (i + batchSize < pairsList.length) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-    }
-
-    console.log(`✅ [Cron] Exchange limits update complete: ${successCount} success, ${errorCount} errors`);
+    const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+    console.log(`✅ [Cron] Exchange limits update complete in ${elapsed}s: ${successCount} updated, ${errorCount} errors`);
 
     return NextResponse.json({
       success: true,
       updated: successCount,
       errors: errorCount,
-      total: pairsList.length,
+      total: toUpdate.length,
+      notConvertibleCount: notConvertible,
+      elapsedSeconds: parseFloat(elapsed),
     });
   } catch (error: any) {
     console.error('❌ [Cron] Exchange limits update failed:', error);
     return NextResponse.json(
       {
         success: false,
-        error: error.message || 'Failed to update exchange limits',
+        error: error?.message ?? 'Failed to update exchange limits',
       },
       { status: 500 }
     );
   }
 }
-
