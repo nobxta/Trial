@@ -161,7 +161,8 @@ export default function OrderPage({ params }: { params: { id: string } }) {
   const [reportOtherText, setReportOtherText] = useState("");
   const [reportSentToast, setReportSentToast] = useState(false);
   const [qrModalOpen, setQrModalOpen] = useState(false);
-  const confettiFiredRef = useRef(false);
+  /** Only poll when Admin has enabled polling (from API response) */
+  const [pollingEnabled, setPollingEnabled] = useState(true);
 
   const reportIssueOptions = [
     { id: "timeout", label: orderPageText.reportModal.options.timeout },
@@ -215,6 +216,7 @@ export default function OrderPage({ params }: { params: { id: string } }) {
 
       if (data?.success && data?.order) {
         const apiOrder = data.order;
+        const serverPollingEnabled = data.pollingEnabled === true;
         // CRITICAL: Single source of truth from API — prefer internal_status, fallback to status (legacy), never leave undefined.
         const internalStatus = apiOrder.internalStatus ?? apiOrder.status ?? 'NEW';
 
@@ -246,6 +248,7 @@ export default function OrderPage({ params }: { params: { id: string } }) {
         };
 
         setOrder(orderData);
+        setPollingEnabled(serverPollingEnabled);
         setLoading(false);
         setError(null);
 
@@ -276,6 +279,8 @@ export default function OrderPage({ params }: { params: { id: string } }) {
 
   const POLL_FAST_MS = 2000;
   const POLL_NORMAL_MS = 5000;
+  /** When status is CONFIRMING or exchanging, keep polling fast so UI updates without reload */
+  const POLL_ACTIVE_MS = 2500;
 
   useEffect(() => {
     if (!orderId) {
@@ -285,7 +290,9 @@ export default function OrderPage({ params }: { params: { id: string } }) {
     }
 
     fetchOrder();
-    pollIntervalRef.current = setInterval(fetchOrder, POLL_FAST_MS);
+    if (pollingEnabled) {
+      pollIntervalRef.current = setInterval(fetchOrder, POLL_FAST_MS);
+    }
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
@@ -301,10 +308,11 @@ export default function OrderPage({ params }: { params: { id: string } }) {
       }
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [orderId, fetchOrder]);
+  }, [orderId, fetchOrder, pollingEnabled]);
 
   useEffect(() => {
-    if (!order || !pollIntervalRef.current) return;
+    if (!pollingEnabled || !order) return;
+    if (!pollIntervalRef.current) return;
     const finalStatuses = ['DONE', 'FAILED', 'EXPIRED'];
     if (finalStatuses.includes(order.internalStatus)) return;
 
@@ -317,7 +325,8 @@ export default function OrderPage({ params }: { params: { id: string } }) {
     }
 
     const awaitingDeposit = order.internalStatus === 'NEW' || order.internalStatus === 'AWAITING_DEPOSIT';
-    const desiredMs = awaitingDeposit ? POLL_FAST_MS : POLL_NORMAL_MS;
+    const activeSwap = ['CONFIRMING', 'PAYMENT_CONFIRMED', 'PROCESSING_BY_PROVIDER', 'MANUAL_REVIEW'].includes(order.internalStatus);
+    const desiredMs = awaitingDeposit ? POLL_FAST_MS : activeSwap ? POLL_ACTIVE_MS : POLL_NORMAL_MS;
 
     clearInterval(pollIntervalRef.current);
     pollIntervalRef.current = setInterval(fetchOrder, desiredMs);
@@ -327,28 +336,7 @@ export default function OrderPage({ params }: { params: { id: string } }) {
         pollIntervalRef.current = null;
       }
     };
-  }, [order?.internalStatus, order?.expiresAt, fetchOrder]);
-
-  useEffect(() => {
-    if (!order) return;
-    const received = [
-      "CONFIRMING",
-      "PAYMENT_CONFIRMED",
-      "PROCESSING_BY_PROVIDER",
-      "MANUAL_REVIEW",
-      "DONE",
-    ].includes(order.internalStatus);
-    if (!received || confettiFiredRef.current) return;
-    confettiFiredRef.current = true;
-    import("canvas-confetti").then(({ default: confetti }) => {
-      confetti({
-        particleCount: 100,
-        spread: 70,
-        origin: { y: 0.6 },
-        colors: ["#22c55e", "#3b82f6", "#06b6d4", "#8b5cf6"],
-      });
-    }).catch(() => {});
-  }, [order?.internalStatus]);
+  }, [pollingEnabled, order?.internalStatus, order?.expiresAt, fetchOrder]);
 
   // Loading State
   if (loading) {
@@ -810,6 +798,29 @@ export default function OrderPage({ params }: { params: { id: string } }) {
               <MessageCircle className="w-[18px] h-[18px]" />
               <span className="text-[13px] font-medium">Need Help? Contact Support</span>
             </button>
+
+            {/* Email notifications (Mobile) — attach email for status updates */}
+            <OrderInfo
+              orderId={orderId}
+              initialNotificationEmail={order?.notificationEmail ?? undefined}
+              text={{
+                instructionsTitle: orderPageText.information.sectionTitle,
+                instructionsTitleShort: orderPageText.information.sectionTitleShort,
+                confirmationsLabel: orderPageText.information.confirmationsLabel,
+                confirmationsRequired: orderPageText.information.confirmationsRequired,
+                networkSpeedLabel: orderPageText.information.networkSpeedLabel,
+                networkSpeed: orderPageText.information.networkSpeed,
+                notificationsTitle: orderPageText.notification.sectionTitle,
+                notificationsTitleShort: orderPageText.notification.sectionTitleShort,
+                stayUpdated: orderPageText.notification.stayUpdated,
+                notificationDescription: orderPageText.notification.description,
+                emailPlaceholder: orderPageText.notification.emailPlaceholder,
+                subscribe: orderPageText.notification.subscribe,
+                subscribing: orderPageText.notification.subscribing,
+                subscribedSuccess: orderPageText.notification.subscribedSuccess,
+                notificationsSentTo: orderPageText.notification.notificationsSentTo,
+              }}
+            />
           </div>
 
           {/* ========== DESKTOP LAYOUT ========== */}

@@ -133,12 +133,13 @@ export function getOrderStatusEmailTemplate(orderId: string, status: string, ord
   const statusMap: Record<string, string> = {
     'done': 'Completed',
     'expired': 'Expired',
-    'processing_by_provider': 'Performing exchange',
+    'processing_by_provider': 'Exchanging',
     'failed': 'Failed',
     'completed': 'Completed',
-    'processing': 'Performing exchange',
-    'performing exchange': 'Performing exchange',
-    'payment confirmed': 'Performing exchange',
+    'processing': 'Exchanging',
+    'performing exchange': 'Exchanging',
+    'payment confirmed': 'Payment confirmed',
+    'confirming': 'Deposit detected',
   };
   const humanStatus = statusMap[status.toLowerCase()] || status;
 
@@ -146,7 +147,9 @@ export function getOrderStatusEmailTemplate(orderId: string, status: string, ord
   const statusMessages: Record<string, string> = {
     'Completed': 'Your order has been completed successfully!',
     'Expired': 'Your order has expired. If you have any questions, please contact support.',
-    'Performing exchange': 'Your exchange is in progress. You will be notified once it completes (typically 7–20 minutes).',
+    'Payment confirmed': 'Your payment has been confirmed. Your exchange is in progress and you will be notified when it completes.',
+    'Exchanging': 'Your exchange is in progress. You will be notified once it completes (typically 7–20 minutes).',
+    'Deposit detected': 'We have detected your deposit. Your payment is being confirmed.',
     'Failed': 'Your order has failed. Please contact support for assistance.',
   };
   const statusMessage = statusMessages[humanStatus] || `Your order status has been updated to: ${humanStatus}`;

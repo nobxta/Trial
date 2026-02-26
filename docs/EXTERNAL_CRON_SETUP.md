@@ -86,7 +86,7 @@ Use this base for all cron URLs below (no trailing slash).
 
 | # | Title | URL | Schedule | Timeout |
 |---|--------|-----|----------|--------|
-| 1 | MintMove – Reconcile orders | `https://mintmove.io/api/cron/reconcile-orders` | Every 5 minutes | 60 s |
+| 1 | MintMove – Reconcile orders | `https://mintmove.io/api/cron/reconcile-orders` | Every **2 minutes** | 60 s |
 | 2 | MintMove – Process email queue | `https://mintmove.io/api/cron/process-email-queue` | Daily 04:00 UTC | 60 s |
 | 3 | MintMove – Update prices | `https://mintmove.io/api/cron/update-prices` | Daily 02:00 UTC | 60 s |
 | 4 | MintMove – Update exchange limits | `https://mintmove.io/api/cron/update-exchange-limits` | Daily 03:00 UTC | 120 s |
@@ -132,6 +132,15 @@ If **manual run = 200**, **logs show cron activity**, and (for those two) **cron
 
 ---
 
+## 2a. Auto-complete after payment confirmed (no verification)
+
+After a payment is **confirmed** (status PAYMENT_CONFIRMED), each order gets a **random 2–10 minute** delay. When that time is reached, the **Reconcile orders** cron marks the order **Completed** (DONE). There is no manual step, no hash or verification — the UI just shows “Swap in progress” and then “Completed” once the cron runs.
+
+- **You must run the Reconcile orders cron** (Job 1) for this to work. Recommended: **every 2 minutes** so orders complete within roughly 2–12 minutes after confirmation.
+- If you run it every 5 minutes, an order might wait up to 5 extra minutes after its 2–10 min window before the cron picks it up.
+
+---
+
 ## 3. Common settings for every cron job
 
 For **each** cron job on cron-job.org:
@@ -153,16 +162,20 @@ Replace `YOUR_DOMAIN.com` below with your production domain (e.g. `mintmove.io` 
 
 Create **4 separate cron jobs** on cron-job.org with the following settings.
 
-### Job 1: Reconcile orders (every 5 minutes)
+### Job 1: Reconcile orders (every 2 minutes) — **required for auto-complete**
 
 | Setting   | Value |
 |----------|--------|
 | **Title** | `MintMove – Reconcile orders` |
 | **URL**   | `https://YOUR_DOMAIN.com/api/cron/reconcile-orders` |
-| **Schedule** | Every **5 minutes** (or cron `*/5 * * * *`) |
+| **Schedule** | Every **2 minutes** (or cron `*/2 * * * *`) |
 | **Timeout**  | **60 seconds** or more |
 
-**What it does:** Webhook failure recovery (polls NOWPayments for stuck orders) and manual payout auto-complete. Idempotent; safe to run every 5 minutes.
+**What it does:**
+- **Auto-complete:** Orders move to **Completed** automatically **2–10 minutes** after payment is confirmed. No verification or hash needed — the cron marks them DONE when the scheduled time (set per order at PAYMENT_CONFIRMED) is reached. Run every 2 minutes so completed orders show up quickly.
+- **Webhook failure recovery:** Polls NOWPayments for stuck orders (e.g. missed webhooks).
+
+Idempotent; safe to run every 2 minutes.
 
 ---
 
@@ -212,7 +225,7 @@ Create **4 separate cron jobs** on cron-job.org with the following settings.
 3. For each of the 4 jobs above:
    - **Title:** as in the table.
    - **URL:** as in the table (with your domain).
-   - **Schedule:** as in the table (every 5 min for reconcile; daily at given time for the others).
+   - **Schedule:** as in the table (every 2 min for reconcile; daily at given time for the others).
    - **Request method:** GET or POST.
    - **Request headers:** add `Authorization` with value `Bearer YOUR_CRON_SECRET`.
    - **Timeout:** as in the table.

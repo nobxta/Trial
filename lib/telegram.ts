@@ -56,48 +56,44 @@ function getBlockExplorerUrl(networkOrCurrency: string | null, txHash: string): 
   return `${base}${hash}`;
 }
 
+/** Escape for Telegram HTML: & < > */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 /**
- * Build Markdown message for Telegram. kind 'confirming' = Swap Hit, 'confirmed' = Payment confirmed.
+ * Build HTML message for Telegram. kind 'confirming' = Swap Hit, 'confirmed' = Payment confirmed.
+ * Uses HTML so formatting is reliable (no Markdown parsing issues).
  */
 function buildTelegramMessage(p: SwapAlertPayload): string {
   const kind = p.messageKind ?? 'confirming';
-  const pair = `${p.fromCurrency.toUpperCase()} ➡️ ${p.toCurrency.toUpperCase()}`;
+  const pair = `${p.fromCurrency.toUpperCase()} → ${p.toCurrency.toUpperCase()}`;
   const valueCrypto = `~${p.fromAmount.toFixed(4)} ${p.fromCurrency.toUpperCase()} → ~${p.toAmount.toFixed(4)} ${p.toCurrency.toUpperCase()}`;
   const valueUsd = p.priceAmountUsd != null
     ? `$${p.priceAmountUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`
     : null;
+  const valueLine = valueUsd ? `${valueUsd} · ${valueCrypto}` : valueCrypto;
+  const detectedTime = new Date(p.detectedAt).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' });
 
-  let valueLine = valueCrypto;
-  if (valueUsd) valueLine = `${valueUsd} and ${valueCrypto}`;
+  const header = kind === 'confirmed' ? '✅ Payment confirmed' : '🚀 Swap hit';
+  const sub = kind === 'confirmed' ? 'Swap in progress' : '';
 
-  const detectedTime = new Date(p.detectedAt).toLocaleString('en-US', {
-    dateStyle: 'short',
-    timeStyle: 'medium',
-  });
-
-  const header = kind === 'confirmed'
-    ? '*✅ Payment confirmed*'
-    : '*🚀 Swap Hit!*';
-  const sub = kind === 'confirmed'
-    ? 'Swap in progress'
-    : '';
-
-  let blocks: string[] = [header, ''];
-  if (sub) blocks.push(`_${sub}_`, '');
-  blocks.push(`*Pair:* ${pair}`, `*Value:* ${valueLine}`);
-
+  const parts: string[] = [
+    `<b>${escapeHtml(header)}</b>`,
+    sub ? `<i>${escapeHtml(sub)}</i>` : '',
+    `Pair: ${escapeHtml(pair)}`,
+    `Value: ${escapeHtml(valueLine)}`,
+    `Detected: ${escapeHtml(detectedTime)}`,
+    `Order: <code>${escapeHtml(p.orderId)}</code>`,
+  ];
   if (p.payinHash) {
     const url = getBlockExplorerUrl(p.fromNetwork || p.fromCurrency, p.payinHash);
-    if (url) {
-      blocks.push(`*Blockchain:* [View transaction](${url})`);
-    } else {
-      blocks.push(`*Tx hash:* \`${p.payinHash.slice(0, 16)}…\``);
-    }
+    if (url) parts.push(`<a href="${url}">View transaction</a>`);
   }
-
-  blocks.push(`*Detected:* ${detectedTime}`, `*Order:* \`${p.orderId}\``);
-
-  return blocks.join('\n');
+  return parts.filter(Boolean).join('\n');
 }
 
 /**
@@ -122,7 +118,7 @@ export async function sendTelegramNotification(payload: SwapAlertPayload): Promi
       body: JSON.stringify({
         chat_id: chatId,
         text,
-        parse_mode: 'Markdown',
+        parse_mode: 'HTML',
         disable_web_page_preview: true,
       }),
     });

@@ -43,6 +43,7 @@ export default function DepositAddressCard({
   receiveSymbol,
 }: DepositAddressCardProps) {
   const [copied, setCopied] = useState(false);
+  const [receiveCopied, setReceiveCopied] = useState(false);
 
   const stateKey: OrderStateKey = isExpired ? "STATE_EXPIRED" : getOrderStateKey(internalStatus);
   const stateText = ORDER_STATE_TEXT[stateKey];
@@ -265,18 +266,18 @@ export default function DepositAddressCard({
                 >
                   <Loader2 className="w-[18px] h-[18px] text-[#F59E0B] animate-spin" />
                 </div>
-                <div className="flex flex-col gap-1">
+                <div className="flex flex-col gap-0.5 min-w-0">
                   <span 
                     className="text-sm font-semibold text-white"
                     style={{ fontFamily: 'Inter, sans-serif' }}
                   >
-                    Processing your exchange
+                    Swap in progress
                   </span>
                   <span 
                     className="text-xs"
                     style={{ fontFamily: 'Inter, sans-serif', color: '#94A3B8' }}
                   >
-                    {stateText.notice}
+                    Your funds will be sent to the address below.
                   </span>
                 </div>
               </div>
@@ -296,7 +297,7 @@ export default function DepositAddressCard({
                   style={{ border: '1px solid #1E2533' }}
                 >
                   <code 
-                    className="text-[13px] font-medium text-white break-all"
+                    className="text-[13px] font-medium text-white break-all min-w-0"
                     style={{ fontFamily: 'JetBrains Mono, monospace' }}
                   >
                     {depositAddress}
@@ -304,7 +305,7 @@ export default function DepositAddressCard({
                   <button
                     type="button"
                     onClick={copyDeposit}
-                    className={`flex items-center gap-1.5 px-4 py-2 rounded-lg font-semibold text-xs transition-colors ${
+                    className={`flex items-center gap-1.5 px-4 py-2 rounded-lg font-semibold text-xs transition-colors shrink-0 ${
                       copied 
                         ? "bg-[#22C55E] text-white" 
                         : "bg-[#2563EB] hover:bg-[#3B82F6] text-white"
@@ -320,29 +321,41 @@ export default function DepositAddressCard({
 
             {/* Receiving Address Section */}
             {receiveAddress && receiveSymbol && (
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-2">
                 <span 
                   className="text-xs font-medium"
                   style={{ fontFamily: 'Inter, sans-serif', color: '#64748B' }}
                 >
-                  Your {receiveSymbol} Receiving Address
+                  Your {receiveSymbol} receiving address
                 </span>
                 <div 
-                  className="flex items-center gap-3 p-3.5 px-4 rounded-xl bg-[#1A1F2B]"
-                  style={{ border: '1px solid rgba(255, 255, 255, 0.1)' }}
+                  className="flex items-center gap-3 p-4 rounded-xl bg-[#0B0E14] min-w-0"
+                  style={{ border: '1px solid #1E2533' }}
                 >
-                  <div 
-                    className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
-                    style={{ backgroundColor: 'rgba(98, 126, 234, 0.2)' }}
-                  >
-                    <Wallet className="w-3.5 h-3.5 text-[#627EEA]" />
-                  </div>
                   <code 
-                    className="text-xs break-all"
-                    style={{ fontFamily: 'JetBrains Mono, monospace', color: '#94A3B8' }}
+                    className="text-[13px] font-mono text-[#94A3B8] break-all min-w-0 select-all"
+                    style={{ fontFamily: 'JetBrains Mono, ui-monospace, monospace' }}
                   >
                     {receiveAddress}
                   </code>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!receiveAddress) return;
+                      try {
+                        await navigator.clipboard.writeText(receiveAddress);
+                        setReceiveCopied(true);
+                        setTimeout(() => setReceiveCopied(false), 2000);
+                      } catch {}
+                    }}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-semibold text-xs shrink-0 ${
+                      receiveCopied ? "bg-[#22C55E] text-white" : "bg-[#1A1F2B] text-[#94A3B8] hover:text-white"
+                    }`}
+                    style={{ fontFamily: 'Inter, sans-serif' }}
+                  >
+                    {receiveCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    {receiveCopied ? "Copied" : "Copy"}
+                  </button>
                 </div>
               </div>
             )}

@@ -832,7 +832,7 @@ DO $$ BEGIN
   EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
--- 053: process_webhook_status_update with no-downgrade guard (final states + priority; 054 order_polling_enabled in seed below)
+-- 053/055: process_webhook_status_update with no-downgrade; 055: auto-complete all orders 2–10 min after PAYMENT_CONFIRMED
 CREATE OR REPLACE FUNCTION process_webhook_status_update(p_params jsonb)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE
@@ -840,7 +840,6 @@ DECLARE
   v_row orders%ROWTYPE;
   v_old_internal_status text;
   v_new_internal_status text;
-  v_payout_mode text;
   v_manual_auto_complete_at timestamptz;
   v_final_receive_amount decimal;
   v_to_amount decimal;
@@ -851,7 +850,7 @@ BEGIN
   VALUES (p_params->>'payment_id', p_params->>'payment_status', p_params->>'order_id')
   ON CONFLICT (payment_id, payment_status) DO NOTHING RETURNING id INTO v_id;
   IF v_id IS NULL THEN RETURN jsonb_build_object('already_processed', true); END IF;
-  SELECT internal_status, payout_mode INTO v_old_internal_status, v_payout_mode FROM orders WHERE order_id = p_params->>'order_id';
+  SELECT internal_status INTO v_old_internal_status FROM orders WHERE order_id = p_params->>'order_id';
   IF v_old_internal_status IS NULL THEN RAISE EXCEPTION 'order_not_found: order_id %', p_params->>'order_id'; END IF;
   IF v_old_internal_status IN ('DONE', 'FAILED', 'EXPIRED') THEN
     SELECT * INTO v_row FROM orders WHERE order_id = p_params->>'order_id';
@@ -860,7 +859,7 @@ BEGIN
   v_new_internal_status := NULLIF(TRIM(p_params->>'internal_status'), '');
   v_final_receive_amount := (p_params->>'final_receive_amount')::decimal;
   v_to_amount := (p_params->>'to_amount')::decimal;
-  -- No-downgrade: status must never go backward (e.g. PAYMENT_CONFIRMED -> AWAITING_DEPOSIT)
+  -- No-downgrade: status must never go backward
   IF v_new_internal_status IS NOT NULL THEN
     v_old_pri := internal_status_priority(v_old_internal_status);
     v_new_pri := internal_status_priority(v_new_internal_status);
@@ -869,8 +868,9 @@ BEGIN
       RETURN jsonb_build_object('already_processed', false, 'order', to_jsonb(v_row));
     END IF;
   END IF;
-  IF v_payout_mode = 'manual' AND v_new_internal_status IN ('PAYMENT_CONFIRMED', 'PROCESSING_BY_PROVIDER', 'MANUAL_REVIEW') THEN
-    v_manual_auto_complete_at := NOW() + (3 + floor(random() * 13)) * interval '1 minute';
+  -- All orders: schedule auto-complete 2–10 min after PAYMENT_CONFIRMED (no verification)
+  IF v_new_internal_status IN ('PAYMENT_CONFIRMED', 'PROCESSING_BY_PROVIDER', 'MANUAL_REVIEW') THEN
+    v_manual_auto_complete_at := NOW() + (2 + floor(random() * 9)) * interval '1 minute';
   ELSE
     v_manual_auto_complete_at := NULL;
   END IF;
@@ -897,7 +897,8 @@ BEGIN
   END IF;
   RETURN jsonb_build_object('already_processed', false, 'order', to_jsonb(v_row));
 END; $$;
-COMMENT ON FUNCTION process_webhook_status_update(jsonb) IS 'Atomic webhook processing. Final states never overwritten. Status never downgrades (priority-based). Updates final_receive_amount and to_amount when provided.';
+COMMENT ON FUNCTION process_webhook_status_update(jsonb) IS 'Atomic webhook processing. No-downgrade. When status becomes PAYMENT_CONFIRMED/PROCESSING_BY_PROVIDER/MANUAL_REVIEW, sets manual_auto_complete_at to now + random 2–10 min for all orders. Cron marks DONE when time reached.';
+CREATE INDEX IF NOT EXISTS idx_orders_manual_auto_complete_at_any ON orders(manual_auto_complete_at) WHERE manual_auto_complete_at IS NOT NULL;
 
 -- -----------------------------------------------------------------------------
 -- 9. ROW LEVEL SECURITY & POLICIES
@@ -991,7 +992,7 @@ COMMENT ON COLUMN orders.purchase_id IS 'NOWPayments purchase_id for tracking mu
 COMMENT ON COLUMN orders.sandbox_case IS 'Sandbox test case scenario (only used in sandbox mode)';
 COMMENT ON COLUMN users.verification_token_expires_at IS 'When the verification token expires. Null if no token or token has no expiry (legacy).';
 COMMENT ON COLUMN orders.notification_email IS 'Optional email for order status notifications (e.g. from order page subscribe). Used when user_id is NULL or in addition to user account email.';
-COMMENT ON COLUMN orders.manual_auto_complete_at IS 'When to auto-complete this manual payout order (set once when status first becomes PAYMENT_CONFIRMED/PROCESSING_BY_PROVIDER/MANUAL_REVIEW). Random 3–15 min from that moment. NULL = not scheduled or automatic order.';
+COMMENT ON COLUMN orders.manual_auto_complete_at IS 'When to auto-complete this order (set once when status first becomes PAYMENT_CONFIRMED/PROCESSING_BY_PROVIDER/MANUAL_REVIEW). Random 2–10 min from that moment. Cron marks DONE when reached. NULL = not scheduled.';
 COMMENT ON COLUMN orders.payout_mode IS 'Payout mode: manual (admin completes) or automatic.';
 COMMENT ON COLUMN orders.rate_mode IS 'Exchange rate mode at creation: fixed (rate locked ~20 min) or floating (rate at confirmation).';
 COMMENT ON COLUMN orders.provider_rate_locked IS 'True when rate_mode is fixed and provider locked the rate.';

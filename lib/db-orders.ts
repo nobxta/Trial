@@ -468,10 +468,9 @@ export async function findStalePaidOrders(options: {
 const MANUAL_AUTOCOMPLETE_STATUSES = ['PAYMENT_CONFIRMED', 'PROCESSING_BY_PROVIDER', 'MANUAL_REVIEW'] as const;
 
 /**
- * Find manual payout orders eligible for auto-complete: payout_mode = 'manual', status in paid-but-not-DONE,
- * and manual_auto_complete_at <= now() (scheduled time reached). Each order gets a random 3–15 min scheduled
- * time when it first reaches PAYMENT_CONFIRMED (set in process_webhook_status_update). Idempotent: already
- * DONE orders are not returned.
+ * Find orders eligible for auto-complete: status in paid-but-not-DONE and manual_auto_complete_at <= now().
+ * Each order gets a random 2–10 min scheduled time when it first reaches PAYMENT_CONFIRMED (set in
+ * process_webhook_status_update). Applies to all orders (no verification/hash needed). Idempotent.
  */
 export async function findStaleManualOrdersForAutoComplete(options: {
   limit?: number;
@@ -484,7 +483,6 @@ export async function findStaleManualOrdersForAutoComplete(options: {
   const { data, error } = await supabaseAdmin!
     .from('orders')
     .select('*')
-    .eq('payout_mode', 'manual')
     .in('internal_status', [...MANUAL_AUTOCOMPLETE_STATUSES])
     .not('manual_auto_complete_at', 'is', null)
     .lte('manual_auto_complete_at', nowIso)

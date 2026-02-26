@@ -351,7 +351,7 @@ export async function runOrderReconciliation(options: ReconcileOptions): Promise
 // ---------------------------------------------------------------------------
 
 export interface ManualAutoCompleteOptions {
-  /** Max orders to process per run. Eligibility is by manual_auto_complete_at <= now() (per-order random 3–15 min). */
+  /** Max orders to process per run. Eligibility is by manual_auto_complete_at <= now() (per-order random 2–10 min). */
   limit?: number;
 }
 
@@ -364,10 +364,10 @@ export interface ManualAutoCompleteResult {
 }
 
 /**
- * Auto-complete manual payout orders whose scheduled time (manual_auto_complete_at) has passed.
- * Each order gets a random 3–15 min scheduled time when it first reaches PAYMENT_CONFIRMED (set in process_webhook_status_update).
- * Uses the same completion path as admin mark_completed: updateOrderStatus(..., 'DONE'), recordOrderCompletion, notifyOrderStatus.
- * Idempotent: only runs completion pipeline when status actually transitions to DONE; already DONE orders are not selected.
+ * Auto-complete orders whose scheduled time (manual_auto_complete_at) has passed.
+ * Each order gets a random 2–10 min scheduled time when it first reaches PAYMENT_CONFIRMED (set in process_webhook_status_update).
+ * No verification or hash required — cron just marks DONE. Uses same path as admin mark_completed: updateOrderStatus, recordOrderCompletion, notifyOrderStatus.
+ * Idempotent: already DONE orders are not selected.
  */
 export async function runManualPayoutAutoComplete(options: ManualAutoCompleteOptions = {}): Promise<ManualAutoCompleteResult> {
   const limit = options.limit ?? 50;

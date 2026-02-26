@@ -221,6 +221,8 @@ export async function GET(
     // CRITICAL: Use clear field names with proper semantics
     const response = {
       success: true,
+      /** When true, frontend may poll for updates; when false (Admin turned off), only initial + tab-focus fetch */
+      pollingEnabled,
       order: {
         id: order.id,
         orderId: order.orderId,
