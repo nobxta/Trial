@@ -361,6 +361,17 @@ export async function POST(request: NextRequest) {
       }
 
       updatedOrder = result.order;
+
+      // PHASE 1: Log exact DB row after webhook update (confirms orders.internal_status was written).
+      webhookLogger.info('Webhook DB row after update', {
+        event: 'webhook_db_row_after_update',
+        order_id: updatedOrder.orderId,
+        internal_status: updatedOrder.internalStatus,
+        user_status: updatedOrder.userStatus,
+        provider_status: updatedOrder.providerStatus,
+        updated_at: updatedOrder.updatedAt,
+        table: 'orders',
+      });
     } catch (txError: any) {
       webhookLogger.error('Webhook atomic processing failed', txError, {
         event: 'webhook_transaction_failed',

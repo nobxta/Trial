@@ -215,14 +215,16 @@ export default function OrderPage({ params }: { params: { id: string } }) {
 
       if (data?.success && data?.order) {
         const apiOrder = data.order;
+        // CRITICAL: Single source of truth from API — prefer internal_status, fallback to status (legacy), never leave undefined.
+        const internalStatus = apiOrder.internalStatus ?? apiOrder.status ?? 'NEW';
 
         const orderData: Order = {
           id: apiOrder.id,
           orderId: apiOrder.orderId,
           paymentId: apiOrder.paymentId,
-          status: apiOrder.status,
-          internalStatus: apiOrder.internalStatus,
-          currentStep: apiOrder.currentStep ?? getStepFromInternalStatus(apiOrder.internalStatus),
+          status: apiOrder.status ?? internalStatus,
+          internalStatus,
+          currentStep: apiOrder.currentStep ?? getStepFromInternalStatus(internalStatus),
           payAmount: apiOrder.payAmount ?? apiOrder.fromAmount,
           payCurrency: apiOrder.payCurrency ?? apiOrder.fromCurrency,
           payNetwork: apiOrder.payNetwork ?? apiOrder.fromNetwork,
@@ -246,6 +248,11 @@ export default function OrderPage({ params }: { params: { id: string } }) {
         setOrder(orderData);
         setLoading(false);
         setError(null);
+
+        // PHASE 2: Log API response status in browser (verify API returned correct status; if correct here but UI wrong, bug is elsewhere).
+        if (process.env.NODE_ENV === 'development' || typeof window !== 'undefined') {
+          console.log('[Order page] API response status', { orderId: apiOrder.orderId, internalStatus, fromApi: apiOrder.internalStatus });
+        }
 
         const finalStatuses = ['DONE', 'FAILED', 'EXPIRED'];
         if (finalStatuses.includes(orderData.internalStatus)) {

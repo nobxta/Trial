@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { unstable_noStore as noStore } from 'next/cache';
 import { getOrderByOrderId, processWebhookStatusUpdateAtomic, updateOrderStatus } from '@/lib/db-orders';
 import { getCurrentStep, mapProviderStatusToInternal, getUserFacingStatus, isStatusDowngrade, type InternalStatus } from '@/lib/status-mapping';
 import { maybeApplySandboxSimulation } from '@/lib/sandbox-simulation';
@@ -30,13 +31,14 @@ function orderPollLog(event: string, orderId: string, details?: Record<string, u
 /**
  * GET /api/order/[id]
  *
- * Returns user-facing status from database. For orders awaiting payment (NEW/AWAITING_DEPOSIT/CONFIRMING),
- * optionally syncs from provider when last update was >15s ago so payment detection works even if webhook fails.
+ * Returns user-facing status from database. Always re-reads DB before response so UI gets latest after webhook.
+ * "Enable Polling" (Admin): when ON, we also sync from NOWPayments for awaiting orders; when OFF, webhook-only.
  */
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  noStore();
   try {
     const orderId = params.id;
 
@@ -72,6 +74,11 @@ export async function GET(
     // NEVER overwrite a higher internal status with a lower one (webhook-confirmed states are authoritative).
     const paymentWindowClosed = order.expiresAt != null && Date.now() > new Date(order.expiresAt).getTime();
     const pollingEnabled = await getOrderPollingEnabled();
+    orderPollLog('order_get_polling_state', orderId, {
+      polling_enabled: pollingEnabled,
+      internal_status_before_poll_block: order.internalStatus,
+      would_run_poll: pollingEnabled && !!order.paymentId && POLL_SYNC_STATUSES.includes(order.internalStatus as InternalStatus) && !paymentWindowClosed,
+    });
     if (
       pollingEnabled &&
       order.paymentId &&
@@ -191,6 +198,19 @@ export async function GET(
     // Sandbox only: apply simulated outcome when applicable.
     order = await maybeApplySandboxSimulation(order);
 
+    // Re-read from DB right before response so we return the latest row (avoids stale read if webhook just committed).
+    const freshOrder = await getOrderByOrderId(orderId);
+    if (freshOrder) order = freshOrder;
+
+    // PHASE 1: Log raw DB result before response (confirms we read from orders and what internal_status we return).
+    orderPollLog('order_get_raw_db_before_response', orderId, {
+      internal_status: order.internalStatus,
+      user_status: order.userStatus,
+      provider_status: order.providerStatus ?? null,
+      updated_at: order.updatedAt,
+      table: 'orders',
+    });
+
     // Amount to send: prefer provider's exact amount (provider_pay_amount), else from_amount
     const payAmount = order.providerPayAmount ?? order.fromAmount;
     // Outcome: use final_receive_amount when set (e.g. after webhook for floating), else to_amount
@@ -247,8 +267,10 @@ export async function GET(
 
     return NextResponse.json(response, {
       headers: {
-        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Cache-Control': 'private, no-store, no-cache, must-revalidate, max-age=0, s-maxage=0',
         'Pragma': 'no-cache',
+        'Expires': '0',
+        'X-Order-Status': order.internalStatus ?? '',
       },
     });
   } catch (error) {
