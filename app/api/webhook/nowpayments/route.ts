@@ -402,38 +402,36 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Telegram: "Swap Hit" only on FIRST real on-chain confirmation (CONFIRMING) for Live orders.
-    // One message per order; USD, Pair, and explorer link are in buildSwapHitMessage.
-    if (
-      statusChanged &&
-      newStatus === 'CONFIRMING' &&
-      order.paymentMode !== 'sandbox'
-    ) {
-      try {
-        const sent = await sendTelegramNotification({
-          orderId: updatedOrder.orderId,
-          fromCurrency: updatedOrder.fromCurrency,
-          fromAmount: updatedOrder.fromAmount,
-          toCurrency: updatedOrder.toCurrency,
-          toAmount: updatedOrder.toAmount,
-          payinHash: payload.payin_hash ?? updatedOrder.payinHash ?? null,
-          fromNetwork: updatedOrder.fromNetwork ?? null,
-          priceAmountUsd: typeof payload.price_amount === 'number' ? payload.price_amount : undefined,
-          detectedAt: updatedOrder.updatedAt ?? new Date().toISOString(),
-        });
-        if (sent) {
-          webhookLogger.info('Telegram notification sent', {
-            event: 'telegram_sent',
+    // Telegram: CONFIRMING (Swap Hit) and PAYMENT_CONFIRMED (Payment confirmed). Live only; no Telegram for expired/failed.
+    if (statusChanged && order.paymentMode !== 'sandbox') {
+      const sendForStatuses: InternalStatus[] = ['CONFIRMING', 'PAYMENT_CONFIRMED'];
+      if (sendForStatuses.includes(newStatus as InternalStatus)) {
+        try {
+          const sent = await sendTelegramNotification({
+            orderId: updatedOrder.orderId,
+            fromCurrency: updatedOrder.fromCurrency,
+            fromAmount: updatedOrder.fromAmount,
+            toCurrency: updatedOrder.toCurrency,
+            toAmount: updatedOrder.toAmount,
+            payinHash: payload.payin_hash ?? updatedOrder.payinHash ?? null,
+            fromNetwork: updatedOrder.fromNetwork ?? null,
+            priceAmountUsd: typeof payload.price_amount === 'number' ? payload.price_amount : undefined,
+            detectedAt: updatedOrder.updatedAt ?? new Date().toISOString(),
+            messageKind: newStatus === 'PAYMENT_CONFIRMED' ? 'confirmed' : 'confirming',
+          });
+          if (sent) {
+            webhookLogger.info('Telegram notification sent', {
+              event: 'telegram_sent',
+              order_id: updatedOrder.orderId,
+              new_status: newStatus,
+            });
+          }
+        } catch (telegramErr: any) {
+          webhookLogger.error('Telegram notification failed', telegramErr, {
+            event: 'telegram_failed',
             order_id: updatedOrder.orderId,
-            new_status: newStatus,
           });
         }
-      } catch (telegramErr: any) {
-        // Log only; do not fail webhook response
-        webhookLogger.error('Telegram notification failed', telegramErr, {
-          event: 'telegram_failed',
-          order_id: updatedOrder.orderId,
-        });
       }
     }
 

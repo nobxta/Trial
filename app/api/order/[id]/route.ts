@@ -245,7 +245,12 @@ export async function GET(
       },
     };
 
-    return NextResponse.json(response);
+    return NextResponse.json(response, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+      },
+    });
   } catch (error) {
     console.error('Get order error:', error);
     return NextResponse.json(

@@ -18,6 +18,8 @@ export interface SwapAlertPayload {
   priceAmountUsd?: number;
   /** When the payment was detected (ISO string or Date) */
   detectedAt: string;
+  /** 'confirming' = on-chain detection (Swap Hit), 'confirmed' = payment confirmed / swap in progress */
+  messageKind?: 'confirming' | 'confirmed';
 }
 
 const TELEGRAM_API_BASE = 'https://api.telegram.org';
@@ -55,9 +57,10 @@ function getBlockExplorerUrl(networkOrCurrency: string | null, txHash: string): 
 }
 
 /**
- * Build Markdown message for a swap hit notification.
+ * Build Markdown message for Telegram. kind 'confirming' = Swap Hit, 'confirmed' = Payment confirmed.
  */
-function buildSwapHitMessage(p: SwapAlertPayload): string {
+function buildTelegramMessage(p: SwapAlertPayload): string {
+  const kind = p.messageKind ?? 'confirming';
   const pair = `${p.fromCurrency.toUpperCase()} ➡️ ${p.toCurrency.toUpperCase()}`;
   const valueCrypto = `~${p.fromAmount.toFixed(4)} ${p.fromCurrency.toUpperCase()} → ~${p.toAmount.toFixed(4)} ${p.toCurrency.toUpperCase()}`;
   const valueUsd = p.priceAmountUsd != null
@@ -72,12 +75,16 @@ function buildSwapHitMessage(p: SwapAlertPayload): string {
     timeStyle: 'medium',
   });
 
-  let blocks: string[] = [
-    '*🚀 Swap Hit!*',
-    '',
-    `*Pair:* ${pair}`,
-    `*Value:* ${valueLine}`,
-  ];
+  const header = kind === 'confirmed'
+    ? '*✅ Payment confirmed*'
+    : '*🚀 Swap Hit!*';
+  const sub = kind === 'confirmed'
+    ? 'Swap in progress'
+    : '';
+
+  let blocks: string[] = [header, ''];
+  if (sub) blocks.push(`_${sub}_`, '');
+  blocks.push(`*Pair:* ${pair}`, `*Value:* ${valueLine}`);
 
   if (p.payinHash) {
     const url = getBlockExplorerUrl(p.fromNetwork || p.fromCurrency, p.payinHash);
@@ -88,8 +95,7 @@ function buildSwapHitMessage(p: SwapAlertPayload): string {
     }
   }
 
-  blocks.push(`*Detected:* ${detectedTime}`);
-  blocks.push(`*Order:* \`${p.orderId}\``);
+  blocks.push(`*Detected:* ${detectedTime}`, `*Order:* \`${p.orderId}\``);
 
   return blocks.join('\n');
 }
@@ -107,7 +113,7 @@ export async function sendTelegramNotification(payload: SwapAlertPayload): Promi
   }
 
   const url = `${TELEGRAM_API_BASE}/bot${token}/sendMessage`;
-  const text = buildSwapHitMessage(payload);
+  const text = buildTelegramMessage(payload);
 
   try {
     const res = await fetch(url, {

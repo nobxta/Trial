@@ -193,7 +193,7 @@ export default function OrderPage({ params }: { params: { id: string } }) {
   const fetchOrder = useCallback(async (): Promise<void> => {
     setIsSyncing(true);
     try {
-      const res = await fetch(`/api/order/${orderId}`, { cache: 'no-store' });
+      const res = await fetch(`/api/order/${orderId}?t=${Date.now()}`, { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } });
 
       if (!res.ok) {
         if (res.status === 404) {
@@ -267,8 +267,8 @@ export default function OrderPage({ params }: { params: { id: string } }) {
     }
   }, [orderId]);
 
-  const POLL_FAST_MS = 3000;
-  const POLL_NORMAL_MS = 6000;
+  const POLL_FAST_MS = 2000;
+  const POLL_NORMAL_MS = 5000;
 
   useEffect(() => {
     if (!orderId) {
