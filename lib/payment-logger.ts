@@ -217,11 +217,10 @@ export const paymentLogger = {
   }) {
     console.log(
       JSON.stringify({
+        ...data,
         level: 'warn',
         message: 'status_downgrade_blocked',
         timestamp: new Date().toISOString(),
-        source: 'order_status_guard',
-        ...data,
       })
     );
   },
