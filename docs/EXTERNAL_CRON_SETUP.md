@@ -90,8 +90,11 @@ Use this base for all cron URLs below (no trailing slash).
 | 2 | MintMove – Process email queue | `https://mintmove.io/api/cron/process-email-queue` | Daily 04:00 UTC | 60 s |
 | 3 | MintMove – Update prices | `https://mintmove.io/api/cron/update-prices` | Daily 02:00 UTC | 60 s |
 | 4 | MintMove – Update exchange limits | `https://mintmove.io/api/cron/update-exchange-limits` | Daily 03:00 UTC | 120 s |
+| 5 (optional) | MintMove – Cleanup unverified | `https://mintmove.io/api/auth/cleanup-unverified` | Daily 02:00 UTC | 30 s |
 
-For **every** job:
+**Job 5** uses `CLEANUP_SECRET` (not CRON_SECRET) if set in env; otherwise no auth. Optional: removes unverified accounts older than 1 hour.
+
+For **every** job (1–4 use CRON_SECRET; job 5 uses CLEANUP_SECRET if set):
 
 - **Request method:** GET (or POST).
 - **Request headers:** add one header:
@@ -267,3 +270,17 @@ If cron-job.org reports **"Failed (HTTP error) (307 Temporary Redirect)"**, the 
    Use `.../api/cron/reconcile-orders` not `.../api/cron/reconcile-orders/`.
 
 After changing the URL, run the cron job manually in cron-job.org to confirm it returns **200 OK** instead of 307.
+
+---
+
+## 8. Verification email and cleanup
+
+**Verification email not received?**  
+If the app logs "Email sent" but the user does not receive the verification email:
+
+- **Check spam/junk** and wait a few minutes.
+- **Use "Resend verification email"** on the sign-in page (the app now returns a clear error if the send fails).
+- Ensure **SMTP** is configured in production (e.g. Vercel: `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, and sender/from if used). Some providers (e.g. Gmail) require an app password.
+
+**"Cleaned up X unverified account(s)" in logs**  
+Cleanup only removes accounts that are **unverified and older than 1 hour**. It does **not** delete the account that just signed up. That message refers to other, older unverified accounts. Cleanup no longer runs automatically on every signup; run it only via the optional cron (Job 5) if you want to prune old unverified accounts.

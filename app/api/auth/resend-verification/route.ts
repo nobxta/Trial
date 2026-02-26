@@ -47,11 +47,19 @@ export async function POST(request: NextRequest) {
       await sendVerificationEmail(user.email, verificationToken, request);
     } catch (e) {
       console.error('Failed to send verification email:', e);
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'EMAIL_SEND_FAILED',
+          message: 'We couldn\'t send the verification email. Please check your email address, try again in a few minutes, or contact support.',
+        },
+        { status: 503 }
+      );
     }
 
     return NextResponse.json({
       success: true,
-      message: 'Verification email sent. Please check your inbox.',
+      message: 'Verification email sent. Please check your inbox (and spam folder).',
     });
   } catch (error) {
     console.error('Resend verification error:', error);

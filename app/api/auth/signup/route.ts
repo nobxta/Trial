@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createUser, getUserByEmail } from '@/lib/db';
 import { hashPassword } from '@/lib/auth';
 import { sendVerificationEmail } from '@/lib/email';
-import { cleanupUnverifiedAccounts } from '@/lib/cleanup';
 import crypto from 'crypto';
 
 export async function POST(request: NextRequest) {
@@ -54,20 +53,20 @@ export async function POST(request: NextRequest) {
     const verificationUrl = `${baseUrl}/verify-email?token=${verificationToken}`;
 
     // Send verification email immediately via SMTP (no queue)
+    let emailSent = true;
     try {
       await sendVerificationEmail(user.email, verificationToken, request);
     } catch (e) {
       console.error('Failed to send verification email:', e);
+      emailSent = false;
     }
-
-    // Cleanup unverified accounts older than 1 hour (non-blocking)
-    cleanupUnverifiedAccounts().catch(() => {
-      // Ignore cleanup errors - it's not critical
-    });
 
     const response = NextResponse.json({
       success: true,
-      message: 'Account created. Please check your email to verify your account.',
+      message: emailSent
+        ? 'Account created. Please check your email to verify your account.'
+        : 'Account created. We couldn\'t send the verification email right now. Please use "Resend verification email" on the sign-in page.',
+      emailSent,
       user: {
         id: user.id,
         email: user.email,

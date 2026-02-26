@@ -95,7 +95,7 @@ function SignInForm() {
         setResendSuccess(true);
         setError("");
       } else {
-        setError(data.error || "Failed to resend verification email");
+        setError(data.message || data.error || "Failed to resend verification email");
       }
     } catch (err) {
       setError("Something went wrong. Please try again.");

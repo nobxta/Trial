@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import Script from "next/script";
 import { VercelAnalytics } from "@/components/VercelAnalytics";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 // Env validation runs when API routes or server code first use lib/env (not in layout, so / loads even if env is not yet set on Vercel).
 
 export const metadata: Metadata = {
@@ -97,6 +98,7 @@ export default function RootLayout({
         </Script>
         {children}
         <VercelAnalytics />
+        <SpeedInsights />
       </body>
     </html>
   );
