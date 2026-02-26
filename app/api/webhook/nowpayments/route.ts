@@ -471,14 +471,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Send email for status changes at all meaningful stages (CONFIRMING → DONE / EXPIRED)
-    const notificationStatuses: InternalStatus[] = [
-      'CONFIRMING',
-      'PAYMENT_CONFIRMED',
-      'PROCESSING_BY_PROVIDER',
-      'DONE',
-      'EXPIRED',
-    ];
+    // Send email only for final outcome (completed or expired), not confirming/confirmed
+    const notificationStatuses: InternalStatus[] = ['DONE', 'EXPIRED'];
     if (statusChanged && notificationStatuses.includes(newStatus as InternalStatus)) {
       try {
         await notifyOrderStatus(order.userId, order.orderId, newStatus.toLowerCase(), request);

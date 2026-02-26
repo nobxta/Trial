@@ -90,6 +90,8 @@ export const orderPageText = {
     subscribing: "Subscribing...",
     subscribedSuccess: "Subscribed to notifications",
     notificationsSentTo: "Notifications will be sent to",
+    /** When user is logged in: no email form, show this instead */
+    notificationsAccountEmail: "Notifications will be sent to your account email.",
     stayUpdated: "Track your swap",
   },
 

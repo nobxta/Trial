@@ -1,13 +1,14 @@
 import { getUserWithPreferences } from './db';
 import { getOrderByOrderId } from './db-orders';
 import { sendGenericEmail } from './email';
-import { getOrderStatusEmailTemplate } from './email-template';
+import { getOrderStatusEmailTemplate, type OrderDetailsForEmail } from './email-template';
 import { getEmailSetting } from './email-settings';
 import { tryClaimIdempotency } from './idempotency';
 import { paymentLogger } from './payment-logger';
+import { getAssetSymbol, getAssetIconUrl } from './asset-normalize';
 import { NextRequest } from 'next/server';
 
-export type NotificationType = 
+export type NotificationType =
   | 'order_status'
   | 'promotion'
   | 'affiliate_earnings'
@@ -19,6 +20,8 @@ interface NotificationData {
   title: string;
   message: string;
   link?: string;
+  /** For order_status (DONE/EXPIRED): swap summary for email template */
+  orderDetails?: OrderDetailsForEmail | null;
 }
 
 /**
@@ -61,8 +64,17 @@ export async function sendNotification(
       const orderId = orderIdMatch ? orderIdMatch[1] : 'N/A';
       const statusMatch = notification.title.match(/-\s+(.+)$/);
       const status = statusMatch ? statusMatch[1].trim() : 'unknown';
-      const { text, html } = getOrderStatusEmailTemplate(orderId, status, notification.link);
-      const emailSubject = `Order ${orderId} - Status Update`;
+      const { text, html } = getOrderStatusEmailTemplate(
+        orderId,
+        status,
+        notification.link,
+        notification.orderDetails
+      );
+      const emailSubject = status.toLowerCase() === 'done' || status.toLowerCase() === 'completed'
+        ? `Swap completed – ${orderId}`
+        : status.toLowerCase() === 'expired'
+        ? `Order expired – ${orderId}`
+        : `Order ${orderId} - Status Update`;
       const ok = await sendGenericEmail(user.email, emailSubject, html, text, 'TRANSACTIONAL', request);
       return ok;
     } else {
@@ -93,23 +105,51 @@ async function sendOrderStatusEmailTo(
   orderId: string,
   status: string,
   orderLink: string,
-  request?: NextRequest
+  request?: NextRequest,
+  orderDetails?: OrderDetailsForEmail | null
 ): Promise<boolean> {
   const orderNotificationsEnabled = await getEmailSetting('order_notifications_enabled', 'true');
   if (orderNotificationsEnabled !== 'true') {
     console.log('📧 Order status email skipped: order_notifications_enabled is false (Admin → Settings → Email)');
     return true;
   }
-  const { text, html } = getOrderStatusEmailTemplate(orderId, status, orderLink);
-  const emailSubject = `Order ${orderId} - Status Update`;
+  const { text, html } = getOrderStatusEmailTemplate(orderId, status, orderLink, orderDetails);
+  const emailSubject =
+    status.toLowerCase() === 'done' || status.toLowerCase() === 'completed'
+      ? `Swap completed – ${orderId}`
+      : status.toLowerCase() === 'expired'
+      ? `Order expired – ${orderId}`
+      : `Order ${orderId} - Status Update`;
   return sendGenericEmail(toEmail, emailSubject, html, text, 'TRANSACTIONAL', request);
 }
 
+/** Only these statuses trigger email. No confirming/confirmed — only final outcome. */
+const EMAIL_STATUSES = ['DONE', 'EXPIRED'] as const;
+
+function buildOrderDetailsForEmail(order: {
+  fromCurrency: string;
+  fromAmount: number;
+  fromNetwork: string | null;
+  toCurrency: string;
+  toAmount: number;
+  toNetwork: string | null;
+}): OrderDetailsForEmail {
+  return {
+    fromAmount: order.fromAmount,
+    fromSymbol: getAssetSymbol(order.fromCurrency),
+    fromNetwork: order.fromNetwork,
+    toAmount: order.toAmount,
+    toSymbol: getAssetSymbol(order.toCurrency),
+    toNetwork: order.toNetwork,
+    fromIconUrl: getAssetIconUrl(order.fromCurrency, order.fromNetwork),
+    toIconUrl: getAssetIconUrl(order.toCurrency, order.toNetwork),
+  };
+}
+
 /**
- * Send order status notification
- * Idempotency: Atomic tryClaimIdempotency — only the caller that claims may run side effects.
- * - Logged-in user: send to user account email (if notifications enabled, email verified).
- * - Guest order: if order has notification_email from order-page subscribe, send to that address.
+ * Send order status notification.
+ * Emails are sent only for DONE and EXPIRED (no confirming/confirmed).
+ * Idempotency: only the caller that claims may run side effects.
  */
 export async function notifyOrderStatus(
   userId: string | null,
@@ -118,11 +158,17 @@ export async function notifyOrderStatus(
   request?: NextRequest
 ): Promise<boolean> {
   const normalizedStatus = status.toUpperCase();
+  if (!EMAIL_STATUSES.includes(normalizedStatus as any)) {
+    return true;
+  }
+
   const idempotencyKey = `order:${orderId}:status:${normalizedStatus}`;
   const scope = 'order_status_email';
-
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
   const orderLink = `${baseUrl}/order/${orderId}`;
+
+  const order = await getOrderByOrderId(orderId);
+  const orderDetails = order ? buildOrderDetailsForEmail(order) : null;
 
   // Logged-in user: send to user account
   if (userId != null && userId !== '') {
@@ -139,8 +185,9 @@ export async function notifyOrderStatus(
         {
           type: 'order_status',
           title: `Order ${orderId} - ${status}`,
-          message: `Your order status has been updated.`,
+          message: normalizedStatus === 'DONE' ? 'Your swap is complete.' : 'Your order has expired.',
           link: orderLink,
+          orderDetails,
         },
         request
       );
@@ -157,8 +204,7 @@ export async function notifyOrderStatus(
     }
   }
 
-  // Guest order: send to order.notification_email if set (order-page subscribe)
-  const order = await getOrderByOrderId(orderId);
+  // Guest order: send to order.notification_email if set
   const notificationEmail = order?.notificationEmail?.trim();
   if (!notificationEmail) {
     console.log('📧 Order status email skipped: guest order (no userId, no notification_email)');
@@ -178,7 +224,8 @@ export async function notifyOrderStatus(
       orderId,
       status,
       orderLink,
-      request
+      request,
+      orderDetails
     );
     paymentLogger.emailAttempt({ order_id: orderId, status: normalizedStatus, success: ok });
     return ok;

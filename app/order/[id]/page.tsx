@@ -163,6 +163,7 @@ export default function OrderPage({ params }: { params: { id: string } }) {
   const [qrModalOpen, setQrModalOpen] = useState(false);
   /** Only poll when Admin has enabled polling (from API response) */
   const [pollingEnabled, setPollingEnabled] = useState(true);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   const reportIssueOptions = [
     { id: "timeout", label: orderPageText.reportModal.options.timeout },
@@ -282,6 +283,15 @@ export default function OrderPage({ params }: { params: { id: string } }) {
   /** When status is CONFIRMING or exchanging, keep polling fast so UI updates without reload */
   const POLL_ACTIVE_MS = 2500;
 
+  // When polling is disabled by admin, still refresh periodically so UI shows webhook updates without reload
+  const FALLBACK_REFRESH_MS = 25000;
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((res) => res.ok && setIsLoggedIn(true))
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     if (!orderId) {
       setError('Order ID is required');
@@ -292,6 +302,8 @@ export default function OrderPage({ params }: { params: { id: string } }) {
     fetchOrder();
     if (pollingEnabled) {
       pollIntervalRef.current = setInterval(fetchOrder, POLL_FAST_MS);
+    } else {
+      pollIntervalRef.current = setInterval(fetchOrder, FALLBACK_REFRESH_MS);
     }
 
     const handleVisibilityChange = () => {
@@ -311,18 +323,27 @@ export default function OrderPage({ params }: { params: { id: string } }) {
   }, [orderId, fetchOrder, pollingEnabled]);
 
   useEffect(() => {
-    if (!pollingEnabled || !order) return;
-    if (!pollIntervalRef.current) return;
+    if (!order) return;
     const finalStatuses = ['DONE', 'FAILED', 'EXPIRED'];
-    if (finalStatuses.includes(order.internalStatus)) return;
-
-    // Stop polling when payment window has passed so we don't keep hitting the API for expired orders
-    const pastExpiresAt = order.expiresAt != null && new Date(order.expiresAt) < new Date();
-    if (pastExpiresAt) {
-      clearInterval(pollIntervalRef.current);
-      pollIntervalRef.current = null;
+    if (finalStatuses.includes(order.internalStatus)) {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
       return;
     }
+
+    const pastExpiresAt = order.expiresAt != null && new Date(order.expiresAt) < new Date();
+    if (pastExpiresAt) {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+      return;
+    }
+
+    if (!pollingEnabled) return;
+    if (!pollIntervalRef.current) return;
 
     const awaitingDeposit = order.internalStatus === 'NEW' || order.internalStatus === 'AWAITING_DEPOSIT';
     const activeSwap = ['CONFIRMING', 'PAYMENT_CONFIRMED', 'PROCESSING_BY_PROVIDER', 'MANUAL_REVIEW'].includes(order.internalStatus);
@@ -803,6 +824,7 @@ export default function OrderPage({ params }: { params: { id: string } }) {
             <OrderInfo
               orderId={orderId}
               initialNotificationEmail={order?.notificationEmail ?? undefined}
+              isLoggedIn={isLoggedIn}
               text={{
                 instructionsTitle: orderPageText.information.sectionTitle,
                 instructionsTitleShort: orderPageText.information.sectionTitleShort,
@@ -819,6 +841,7 @@ export default function OrderPage({ params }: { params: { id: string } }) {
                 subscribing: orderPageText.notification.subscribing,
                 subscribedSuccess: orderPageText.notification.subscribedSuccess,
                 notificationsSentTo: orderPageText.notification.notificationsSentTo,
+                notificationsAccountEmail: orderPageText.notification.notificationsAccountEmail,
               }}
             />
           </div>
@@ -938,6 +961,7 @@ export default function OrderPage({ params }: { params: { id: string } }) {
             <OrderInfo
               orderId={orderId}
               initialNotificationEmail={order?.notificationEmail ?? undefined}
+              isLoggedIn={isLoggedIn}
               text={{
                 instructionsTitle: orderPageText.information.sectionTitle,
                 instructionsTitleShort: orderPageText.information.sectionTitleShort,
@@ -954,6 +978,7 @@ export default function OrderPage({ params }: { params: { id: string } }) {
                 subscribing: orderPageText.notification.subscribing,
                 subscribedSuccess: orderPageText.notification.subscribedSuccess,
                 notificationsSentTo: orderPageText.notification.notificationsSentTo,
+                notificationsAccountEmail: orderPageText.notification.notificationsAccountEmail,
               }}
             />
           </div>

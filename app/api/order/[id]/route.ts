@@ -13,7 +13,8 @@ export const dynamic = 'force-dynamic';
 
 const POLL_SYNC_THROTTLE_MS = 15_000;
 const POLL_SYNC_STATUSES: InternalStatus[] = ['NEW', 'AWAITING_DEPOSIT', 'CONFIRMING'];
-const POLL_SYNC_NOTIFY_STATUSES: InternalStatus[] = ['CONFIRMING', 'PAYMENT_CONFIRMED', 'PROCESSING_BY_PROVIDER', 'DONE', 'EXPIRED'];
+/** Only final outcomes trigger email; no confirming/confirmed */
+const POLL_SYNC_NOTIFY_STATUSES: InternalStatus[] = ['DONE', 'EXPIRED'];
 /** Only these statuses may be marked EXPIRED by time (payment window closed). */
 const EXPIRY_BY_TIME_STATUSES: InternalStatus[] = ['NEW', 'AWAITING_DEPOSIT'];
 

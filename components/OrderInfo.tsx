@@ -7,6 +7,8 @@ interface OrderInfoProps {
   orderId: string;
   /** If order already has a notification email (from API), show subscribed state */
   initialNotificationEmail?: string | null;
+  /** When true, hide email form and show account-email message */
+  isLoggedIn?: boolean;
   text: {
     instructionsTitle: string;
     instructionsTitleShort?: string;
@@ -23,10 +25,11 @@ interface OrderInfoProps {
     subscribing: string;
     subscribedSuccess: string;
     notificationsSentTo: string;
+    notificationsAccountEmail?: string;
   };
 }
 
-export default function OrderInfo({ orderId, initialNotificationEmail, text }: OrderInfoProps) {
+export default function OrderInfo({ orderId, initialNotificationEmail, isLoggedIn, text }: OrderInfoProps) {
   const [email, setEmail] = useState("");
   const [isSubscribing, setIsSubscribing] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
@@ -64,9 +67,9 @@ export default function OrderInfo({ orderId, initialNotificationEmail, text }: O
   };
 
   return (
-    <div className="grid md:grid-cols-2 gap-6">
+    <div className="grid md:grid-cols-2 gap-6 min-w-0 max-w-full overflow-hidden">
       {/* What You Need to Know Card */}
-      <div className="rounded-[20px] border border-white/10 bg-[#12161F] p-6 shadow-[0_4px_24px_rgba(0,0,0,0.2)]">
+      <div className="rounded-[20px] border border-white/10 bg-[#12161F] p-6 shadow-[0_4px_24px_rgba(0,0,0,0.2)] min-w-0 overflow-hidden">
         {/* Header */}
         <div className="flex items-center gap-3 mb-5">
           <div 
@@ -136,17 +139,17 @@ export default function OrderInfo({ orderId, initialNotificationEmail, text }: O
       </div>
 
       {/* Notification Card */}
-      <div className="rounded-[20px] border border-white/10 bg-[#12161F] p-6 shadow-[0_4px_24px_rgba(0,0,0,0.2)]">
+      <div className="rounded-[20px] border border-white/10 bg-[#12161F] p-6 shadow-[0_4px_24px_rgba(0,0,0,0.2)] min-w-0 overflow-hidden">
         {/* Header */}
-        <div className="flex items-center gap-3 mb-3">
+        <div className="flex items-center gap-3 mb-3 min-w-0">
           <div 
-            className="w-10 h-10 rounded-xl flex items-center justify-center"
+            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
             style={{ backgroundColor: 'rgba(34, 197, 94, 0.1)' }}
           >
             <Bell className="w-5 h-5 text-[#22C55E]" />
           </div>
           <h3 
-            className="text-white font-bold text-base"
+            className="text-white font-bold text-base truncate min-w-0"
             style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}
           >
             {text.notificationsTitle}
@@ -155,14 +158,32 @@ export default function OrderInfo({ orderId, initialNotificationEmail, text }: O
 
         {/* Description */}
         <p 
-          className="text-[13px] mb-5"
+          className="text-[13px] mb-5 break-words"
           style={{ fontFamily: 'Inter, sans-serif', color: '#94A3B8' }}
         >
           {text.notificationDescription}
         </p>
 
-        {/* Form */}
-        {isSubscribed ? (
+        {/* Logged in: no email form */}
+        {isLoggedIn ? (
+          <div 
+            className="flex items-center gap-3 p-4 rounded-xl"
+            style={{ backgroundColor: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.2)' }}
+          >
+            <div 
+              className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+              style={{ backgroundColor: 'rgba(34, 197, 94, 0.2)' }}
+            >
+              <Check className="w-4 h-4 text-[#22C55E]" />
+            </div>
+            <span 
+              className="text-sm text-[#94A3B8] min-w-0 break-words"
+              style={{ fontFamily: 'Inter, sans-serif' }}
+            >
+              {text.notificationsAccountEmail ?? "Notifications will be sent to your account email."}
+            </span>
+          </div>
+        ) : isSubscribed ? (
           <div 
             className="flex items-center gap-3 p-4 rounded-xl"
             style={{ backgroundColor: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.2)' }}
@@ -189,18 +210,18 @@ export default function OrderInfo({ orderId, initialNotificationEmail, text }: O
             </div>
           </div>
         ) : (
-          <form onSubmit={handleSubscribe} className="flex gap-3">
+          <form onSubmit={handleSubscribe} className="flex flex-col sm:flex-row gap-3 min-w-0">
             <div 
-              className="flex-1 flex items-center gap-3 px-4 py-3.5 rounded-xl bg-[#0B0E14]"
+              className="flex-1 min-w-0 flex items-center gap-3 px-4 py-3.5 rounded-xl bg-[#0B0E14]"
               style={{ border: '1px solid #1E2533' }}
             >
-              <Mail className="w-[18px] h-[18px] text-[#64748B]" />
+              <Mail className="w-[18px] h-[18px] text-[#64748B] shrink-0" />
               <input
                 type="email"
                 placeholder={text.emailPlaceholder}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="flex-1 bg-transparent text-sm text-white placeholder-[#64748B] outline-none"
+                className="flex-1 min-w-0 bg-transparent text-sm text-white placeholder-[#64748B] outline-none w-full"
                 style={{ fontFamily: 'Inter, sans-serif' }}
                 disabled={isSubscribing}
               />
@@ -208,7 +229,7 @@ export default function OrderInfo({ orderId, initialNotificationEmail, text }: O
             <button
               type="submit"
               disabled={isSubscribing || !email.includes("@")}
-              className="px-6 py-3.5 bg-[#2563EB] hover:bg-[#3B82F6] disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-sm rounded-xl transition-colors flex items-center gap-2"
+              className="shrink-0 px-6 py-3.5 bg-[#2563EB] hover:bg-[#3B82F6] disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-sm rounded-xl transition-colors flex items-center justify-center gap-2"
               style={{ fontFamily: 'Inter, sans-serif' }}
             >
               {isSubscribing ? (
