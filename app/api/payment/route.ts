@@ -119,10 +119,15 @@ export async function POST(request: NextRequest) {
       const feeSettings = await getExchangeFeeSettings();
       const feePercent = isFixedRate ? feeSettings.fixedFeePercent : feeSettings.floatingFeePercent;
       // Backend-calculated expected receive: provider estimate then apply our fee (fee is deducted from output)
+      // For fixed-rate orders, also fetch the rate_id that locks the rate (~20 min)
       let expectedReceiveBackend: number;
+      let fixedRateId: string | undefined;
       try {
-        const estimatedFromProvider = await getEstimatedPrice(sendAmount, sendAsset.id, receiveAsset.id);
-        expectedReceiveBackend = applyFee(estimatedFromProvider, feePercent);
+        const estimate = await getEstimatedPrice(sendAmount, sendAsset.id, receiveAsset.id, isFixedRate);
+        expectedReceiveBackend = applyFee(estimate.estimated_amount, feePercent);
+        if (isFixedRate && estimate.rate_id) {
+          fixedRateId = estimate.rate_id;
+        }
       } catch (estimateErr: any) {
         console.warn('Estimated price failed, using client expected_receive:', estimateErr?.message);
         expectedReceiveBackend = parseFloat(body.expected_receive || '0') || 0;
@@ -135,6 +140,7 @@ export async function POST(request: NextRequest) {
         order_id: body.order_id,
         order_description: body.order_description || `Exchange ${body.send_amount} ${body.send_asset} to ${body.receive_asset}`,
         is_fixed_rate: isFixedRate,
+        ...(fixedRateId && { rate_id: fixedRateId }),
       };
       // Automatic payout: include payout_address and payout_currency so NOWPayments sends converted funds to user.
       // Manual payout: omit so funds remain in NOWPayments balance; admin pays user manually and marks order completed.

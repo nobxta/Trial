@@ -78,6 +78,8 @@ interface PaymentRequest {
   payout_currency?: string;
   /** When true, provider locks conversion rate for ~20 min. When false, rate at confirmation. */
   is_fixed_rate?: boolean;
+  /** Rate ID from /estimate?useRateId=true — required when is_fixed_rate is true. */
+  rate_id?: string;
   // Sandbox-specific: case parameter for testing scenarios
   case?: 'success' | 'failed' | 'expired' | 'partially_paid';
 }
@@ -149,6 +151,10 @@ export async function createPayment(params: PaymentRequest): Promise<PaymentResp
   // Fixed vs floating rate: provider locks rate when true (~20 min)
   if (params.is_fixed_rate !== undefined) {
     payload.is_fixed_rate = Boolean(params.is_fixed_rate);
+  }
+  // Rate ID is required for fixed-rate payments (obtained from /estimate?useRateId=true)
+  if (params.rate_id) {
+    payload.rate_id = params.rate_id;
   }
 
   // Sandbox-specific: add case parameter for testing scenarios
@@ -317,24 +323,32 @@ export async function getAvailableCurrencies(): Promise<string[]> {
 }
 
 // Get estimated price
+// When useRateId is true (fixed-rate), NOWPayments returns a rate_id that locks the rate for ~20 min.
+// That rate_id must be passed to createPayment() for fixed-rate orders.
 export async function getEstimatedPrice(
   amount: number,
   fromCurrency: string,
-  toCurrency: string
-): Promise<number> {
+  toCurrency: string,
+  useRateId: boolean = false
+): Promise<{ estimated_amount: number; rate_id?: string }> {
   const config = await getNowPaymentsConfig();
-  
-  const response = await fetchGetWithRetry(
-    `${config.baseUrl}/estimate?amount=${amount}&currency_from=${fromCurrency}&currency_to=${toCurrency}`,
-    { 'x-api-key': config.apiKey }
-  );
+
+  let url = `${config.baseUrl}/estimate?amount=${amount}&currency_from=${fromCurrency}&currency_to=${toCurrency}`;
+  if (useRateId) {
+    url += '&useRateId=true';
+  }
+
+  const response = await fetchGetWithRetry(url, { 'x-api-key': config.apiKey });
 
   if (!response.ok) {
     throw new Error('Failed to get estimated price');
   }
 
   const data = await response.json();
-  return data.estimated_amount || 0;
+  return {
+    estimated_amount: data.estimated_amount || 0,
+    rate_id: data.rate_id || undefined,
+  };
 }
 
 // Get QR code URL (NOWPayments provides this in the payment response)
