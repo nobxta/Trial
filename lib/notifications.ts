@@ -40,8 +40,10 @@ export async function sendNotification(
       return false;
     }
 
-    if (!user.notificationsEnabled) {
-      console.log('📧 Order status email skipped: user notifications disabled');
+    // Order status emails are transactional (user placed the order, expects completion notice).
+    // Only check notificationsEnabled for promotional/marketing emails.
+    if (!user.notificationsEnabled && notification.type !== 'order_status') {
+      console.log('📧 Email skipped: user notifications disabled');
       return false;
     }
 

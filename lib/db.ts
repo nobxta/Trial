@@ -202,7 +202,7 @@ export async function getUserWithPreferences(userId: string): Promise<{
     id: data.id,
     email: data.email,
     emailVerified: data.email_verified,
-    notificationsEnabled: data.notifications_enabled || false,
+    notificationsEnabled: data.notifications_enabled ?? true,
     createdAt: data.created_at,
   };
 }

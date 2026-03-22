@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS users (
   email_verified BOOLEAN DEFAULT FALSE,
   verification_token TEXT,
   verification_token_expires_at TIMESTAMP WITH TIME ZONE,
-  notifications_enabled BOOLEAN DEFAULT FALSE,
+  notifications_enabled BOOLEAN DEFAULT TRUE,
   affiliate_code TEXT UNIQUE,
   api_key TEXT,
   blocked BOOLEAN DEFAULT FALSE,

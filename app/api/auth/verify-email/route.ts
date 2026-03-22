@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUserByVerificationToken, updateUser } from '@/lib/db';
+import { getUserByVerificationToken, updateUser, updateUserPreferences } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   try {
@@ -46,6 +46,9 @@ export async function GET(request: NextRequest) {
       verificationToken: null,
       verificationTokenExpiresAt: null,
     });
+
+    // Auto-enable order notifications for verified users
+    await updateUserPreferences(user.id, { notificationsEnabled: true });
 
     return NextResponse.json({
       success: true,

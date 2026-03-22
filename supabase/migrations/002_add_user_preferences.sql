@@ -1,7 +1,7 @@
 -- DEPRECATED: merged into 000_final_schema.sql
 -- Add user preferences columns to users table
 ALTER TABLE users 
-ADD COLUMN IF NOT EXISTS notifications_enabled BOOLEAN DEFAULT FALSE,
+ADD COLUMN IF NOT EXISTS notifications_enabled BOOLEAN DEFAULT TRUE,
 ADD COLUMN IF NOT EXISTS affiliate_code TEXT UNIQUE,
 ADD COLUMN IF NOT EXISTS api_key TEXT;
 
