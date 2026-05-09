@@ -7,10 +7,18 @@ import { cleanupUnverifiedAccounts } from '@/lib/cleanup';
  */
 export async function POST(request: NextRequest) {
   try {
-    // Optional: Add secret for security (recommended for production)
     const authHeader = request.headers.get('authorization');
-    const cleanupSecret = process.env.CLEANUP_SECRET;
+    const cleanupSecret = process.env.CLEANUP_SECRET?.trim();
+    const isProduction = process.env.NODE_ENV === 'production';
     
+    if (isProduction && !cleanupSecret) {
+      console.error('CLEANUP_SECRET must be set before cleanup can run in production');
+      return NextResponse.json(
+        { success: false, error: 'Cleanup is not configured' },
+        { status: 500 }
+      );
+    }
+
     if (cleanupSecret && authHeader !== `Bearer ${cleanupSecret}`) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },

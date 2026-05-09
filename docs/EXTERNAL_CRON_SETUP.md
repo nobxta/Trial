@@ -92,9 +92,9 @@ Use this base for all cron URLs below (no trailing slash).
 | 4 | MintMove – Update exchange limits | `https://mintmove.io/api/cron/update-exchange-limits` | Daily 03:00 UTC | 120 s |
 | 5 (optional) | MintMove – Cleanup unverified | `https://mintmove.io/api/auth/cleanup-unverified` | Daily 02:00 UTC | 30 s |
 
-**Job 5** uses `CLEANUP_SECRET` (not CRON_SECRET) if set in env; otherwise no auth. Optional: removes unverified accounts older than 1 hour.
+**Job 5** uses `CLEANUP_SECRET` (not CRON_SECRET). In production, the endpoint refuses to run unless `CLEANUP_SECRET` is configured and sent in the Authorization header.
 
-For **every** job (1–4 use CRON_SECRET; job 5 uses CLEANUP_SECRET if set):
+For **every** job (1–4 use CRON_SECRET; job 5 uses CLEANUP_SECRET):
 
 - **Request method:** GET (or POST).
 - **Request headers:** add one header:
