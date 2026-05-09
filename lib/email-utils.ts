@@ -6,6 +6,12 @@ import { getPublicBaseUrl, isProductionEnv } from './env';
  * Automatically detects from request headers or uses validated env
  */
 export function getBaseUrl(request?: NextRequest): string {
+  // Production links must come from configured canonical origin, never request
+  // headers, so verification tokens cannot be sent inside Host-spoofed URLs.
+  if (typeof window === 'undefined' && isProductionEnv()) {
+    return getPublicBaseUrl();
+  }
+
   // If we have a request, use the host from headers
   if (request) {
     const protocol =

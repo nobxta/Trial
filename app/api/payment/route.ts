@@ -129,8 +129,28 @@ export async function POST(request: NextRequest) {
           fixedRateId = estimate.rate_id;
         }
       } catch (estimateErr: any) {
+        if (isFixedRate) {
+          console.warn('Fixed-rate estimate failed; refusing to create unlocked fixed-rate payment:', estimateErr?.message);
+          return NextResponse.json(
+            {
+              error: 'Unable to lock a fixed rate for this pair. Please try again in a moment or choose a floating rate.',
+              code: 'FIXED_RATE_LOCK_UNAVAILABLE',
+            },
+            { status: 503 }
+          );
+        }
         console.warn('Estimated price failed, using client expected_receive:', estimateErr?.message);
         expectedReceiveBackend = parseFloat(body.expected_receive || '0') || 0;
+      }
+      if (isFixedRate && !fixedRateId) {
+        console.warn('Fixed-rate estimate did not return a rate_id; refusing to create unlocked fixed-rate payment');
+        return NextResponse.json(
+          {
+            error: 'Unable to lock a fixed rate for this pair. Please try again in a moment or choose a floating rate.',
+            code: 'FIXED_RATE_LOCK_UNAVAILABLE',
+          },
+          { status: 503 }
+        );
       }
 
       const paymentParams: any = {

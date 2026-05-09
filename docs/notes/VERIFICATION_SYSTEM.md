@@ -55,7 +55,7 @@ Resends verification email to user.
 ### POST `/api/auth/cleanup-unverified`
 Manually trigger cleanup of unverified accounts (optional, runs automatically).
 
-**Headers (optional for security):**
+**Headers (required in production):**
 ```
 Authorization: Bearer YOUR_CLEANUP_SECRET
 ```
@@ -74,7 +74,7 @@ Authorization: Bearer YOUR_CLEANUP_SECRET
 Add to `.env.local`:
 
 ```env
-# Optional: Secret for cleanup endpoint (recommended for production)
+# Required in production: Secret for cleanup endpoint
 CLEANUP_SECRET=your-random-secret-key
 ```
 
@@ -121,7 +121,7 @@ Schedule: Every hour (`0 * * * *`)
 1. **Unverified accounts are blocked** from signing in
 2. **Accounts auto-delete** after 1 hour if not verified
 3. **Resend verification** generates a new token (old token becomes invalid)
-4. **Cleanup endpoint** can be secured with `CLEANUP_SECRET`
+4. **Cleanup endpoint** requires `CLEANUP_SECRET` in production
 
 ## Testing
 

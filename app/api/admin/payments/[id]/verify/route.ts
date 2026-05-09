@@ -4,6 +4,7 @@ import { logAdminAction } from '@/lib/db-admin-logs';
 import { getPaymentStatus } from '@/lib/nowpayments';
 import { supabaseAdmin } from '@/lib/supabase';
 import { updateOrderStatus } from '@/lib/db-orders';
+import { mapProviderStatusToInternal, type InternalStatus } from '@/lib/status-mapping';
 
 export async function POST(
   request: NextRequest,
@@ -26,35 +27,35 @@ export async function POST(
     }
 
     const previousState = {
-      status: order.status,
+      status: order.internal_status || order.status,
       payment_id: order.payment_id,
     };
 
-    const paymentStatus = await getPaymentStatus(params.id);
+    if (order.payment_mode !== 'live' && order.payment_mode !== 'sandbox') {
+      return NextResponse.json(
+        { error: 'Order has no payment_mode set; cannot verify safely' },
+        { status: 400 }
+      );
+    }
 
-    const statusMap: Record<string, string> = {
-      'waiting': 'NEW',
-      'confirming': 'CONFIRMING',
-      'confirmed': 'PENDING',
-      'sending': 'EXCHANGE',
-      'partially_paid': 'PENDING',
-      'finished': 'DONE',
-      'success': 'DONE',
-      'failed': 'EXPIRED',
-      'expired': 'EXPIRED',
-      'refunded': 'EXPIRED',
-    };
+    const paymentStatus = await getPaymentStatus(params.id, order.payment_mode);
 
-    let mappedStatus = statusMap[paymentStatus.payment_status?.toLowerCase()] || order.status;
+    let mappedStatus = mapProviderStatusToInternal(paymentStatus.payment_status) as InternalStatus;
     if (order.payout_mode === 'manual' && mappedStatus === 'DONE') {
       mappedStatus = 'PAYMENT_CONFIRMED';
     }
 
-    if (mappedStatus !== order.status) {
-      await updateOrderStatus(order.order_id, mappedStatus, undefined, {
+    const currentStatus = order.internal_status || order.status;
+    let updatedStatus = currentStatus;
+    if (mappedStatus !== currentStatus || order.provider_status !== paymentStatus.payment_status) {
+      const updatedOrder = await updateOrderStatus(order.order_id, mappedStatus, {
+        providerStatus: paymentStatus.payment_status,
+      }, {
         source: 'admin',
-        skipTransitionCheck: true,
+        paymentStatus: paymentStatus.payment_status,
+        updatedBy: admin.adminId,
       });
+      updatedStatus = updatedOrder?.internalStatus || currentStatus;
     }
 
     const ipAddress = request.headers.get('x-forwarded-for') || 
@@ -65,7 +66,7 @@ export async function POST(
     await logAdminAction(admin.adminId, 'verify_payment', 'payment', {
       resourceId: params.id,
       previousState,
-      newState: { status: mappedStatus, payment_status: paymentStatus.payment_status },
+      newState: { status: updatedStatus, payment_status: paymentStatus.payment_status },
       details: { payment_id: params.id, provider_status: paymentStatus.payment_status },
       ipAddress,
       userAgent,
@@ -74,8 +75,9 @@ export async function POST(
     return NextResponse.json({
       success: true,
       payment: paymentStatus,
-      order_status: mappedStatus,
-      status_changed: mappedStatus !== order.status,
+      order_status: updatedStatus,
+      provider_mapped_status: mappedStatus,
+      status_changed: updatedStatus !== currentStatus,
     });
   } catch (error: any) {
     if (error.message.includes('Unauthorized') || error.message.includes('Forbidden')) {
