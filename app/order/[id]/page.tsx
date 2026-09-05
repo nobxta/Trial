@@ -146,13 +146,24 @@ function getStatusLabel(internalStatus: string, isTimerExpired?: boolean): strin
   }
 }
 
+/**
+ * True when two order snapshots carry the same values.
+ *
+ * Every field is a primitive or null, so a key-by-key comparison is exact and
+ * lets the poll skip a state update when nothing moved.
+ */
+function shallowEqualOrder(a: Order, b: Order): boolean {
+  const keys = Object.keys(b) as (keyof Order)[];
+  if (keys.length !== Object.keys(a).length) return false;
+  return keys.every((k) => a[k] === b[k]);
+}
+
 export default function OrderPage({ params }: { params: { id: string } }) {
   const orderId = params.id;
   
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [showCopyToast, setShowCopyToast] = useState(false);
   const [isLg, setIsLg] = useState(true);
   const [reportSent, setReportSent] = useState(false);
@@ -193,7 +204,6 @@ export default function OrderPage({ params }: { params: { id: string } }) {
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchOrder = useCallback(async (): Promise<void> => {
-    setIsSyncing(true);
     try {
       const res = await fetch(`/api/order/${orderId}?t=${Date.now()}`, { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } });
 
@@ -201,15 +211,12 @@ export default function OrderPage({ params }: { params: { id: string } }) {
         if (res.status === 404) {
           setError('Order not found');
           setLoading(false);
-          setIsSyncing(false);
           return;
         }
         if (res.status === 500 || res.status === 503) {
           console.warn('Order API temporarily unavailable');
-          setIsSyncing(false);
           return;
         }
-        setIsSyncing(false);
         return;
       }
 
@@ -248,13 +255,18 @@ export default function OrderPage({ params }: { params: { id: string } }) {
           notificationEmail: apiOrder.notificationEmail ?? null,
         };
 
-        setOrder(orderData);
+        // Polling runs every ~2s and usually returns identical data. Replacing the
+        // object regardless gave it a new identity each time and re-rendered the
+        // whole page, so only commit when a field genuinely changed.
+        setOrder((prev) => (prev && shallowEqualOrder(prev, orderData) ? prev : orderData));
         setPollingEnabled(serverPollingEnabled);
         setLoading(false);
         setError(null);
 
-        // PHASE 2: Log API response status in browser (verify API returned correct status; if correct here but UI wrong, bug is elsewhere).
-        if (process.env.NODE_ENV === 'development' || typeof window !== 'undefined') {
+        // Development only. The previous condition also accepted `typeof window
+        // !== 'undefined'`, which is always true in a browser, so this logged on
+        // every poll in production.
+        if (process.env.NODE_ENV === 'development') {
           console.log('[Order page] API response status', { orderId: apiOrder.orderId, internalStatus, fromApi: apiOrder.internalStatus });
         }
 
@@ -273,8 +285,6 @@ export default function OrderPage({ params }: { params: { id: string } }) {
       console.error('Failed to fetch order:', err);
       setError('Failed to load order');
       setLoading(false);
-    } finally {
-      setIsSyncing(false);
     }
   }, [orderId]);
 

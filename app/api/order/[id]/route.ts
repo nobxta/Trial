@@ -19,6 +19,10 @@ const POLL_SYNC_NOTIFY_STATUSES: InternalStatus[] = ['DONE', 'EXPIRED'];
 const EXPIRY_BY_TIME_STATUSES: InternalStatus[] = ['NEW', 'AWAITING_DEPOSIT'];
 
 function orderPollLog(event: string, orderId: string, details?: Record<string, unknown>) {
+  // Diagnostic tracing only. This route is polled every ~2s per open order page,
+  // so logging unconditionally floods production logs with routine no-op reads.
+  if (process.env.NODE_ENV === 'production') return;
+
   console.log(JSON.stringify({
     level: 'info',
     message: event,
