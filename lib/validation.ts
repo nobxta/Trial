@@ -4,6 +4,11 @@
  */
 
 import { isValidAssetNetworkId, getAssetNetworkById } from './supportedAssets';
+import {
+  isValidBitcoinAddress,
+  isValidLitecoinAddress,
+  isValidTronAddress,
+} from './address-checksum';
 
 /**
  * Validate cryptocurrency address format
@@ -23,20 +28,21 @@ export function validateCryptoAddress(address: string, network: string): { valid
     }
   }
 
-  // Tron addresses (TRC20)
+  // Tron addresses (TRC20) -- Base58Check, so a typo fails the checksum
   if (networkUpper === 'TRC20' || networkUpper === 'TRX') {
-    if (!/^T[A-Za-z1-9]{33}$/.test(trimmedAddress)) {
-      return { valid: false, error: 'Invalid Tron address format. Must start with T and be 34 characters long.' };
+    if (!isValidTronAddress(trimmedAddress)) {
+      return { valid: false, error: 'Invalid Tron address. Check that it was copied correctly.' };
     }
   }
 
-  // Bitcoin addresses
+  // Bitcoin addresses.
+  // Verified by checksum rather than shape: a length-preserving typo passes any regex
+  // but fails Base58Check / Bech32, and catching it here gives the user an accurate
+  // message instead of a vague rejection from the payment provider later.
+  // Covers legacy (1...), P2SH (3...), SegWit v0 (bc1q...) and Taproot (bc1p...).
   if (networkUpper === 'BTC') {
-    // Legacy (P2PKH): starts with 1, 25-34 chars
-    // SegWit (P2SH): starts with 3, 25-34 chars
-    // Bech32 (native SegWit): starts with bc1, 39-59 chars
-    if (!/^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$|^bc1[a-z0-9]{39,59}$/i.test(trimmedAddress)) {
-      return { valid: false, error: 'Invalid Bitcoin address format.' };
+    if (!isValidBitcoinAddress(trimmedAddress)) {
+      return { valid: false, error: 'Invalid Bitcoin address. Check that it was copied correctly.' };
     }
   }
 
@@ -48,11 +54,10 @@ export function validateCryptoAddress(address: string, network: string): { valid
     }
   }
 
-  // Litecoin addresses
+  // Litecoin addresses: legacy/P2SH (L/M/3...) plus native SegWit (ltc1...)
   if (networkUpper === 'LTC') {
-    // Similar to Bitcoin but can start with L, M, or 3
-    if (!/^[LM3][a-km-zA-HJ-NP-Z1-9]{25,34}$/i.test(trimmedAddress)) {
-      return { valid: false, error: 'Invalid Litecoin address format.' };
+    if (!isValidLitecoinAddress(trimmedAddress)) {
+      return { valid: false, error: 'Invalid Litecoin address. Check that it was copied correctly.' };
     }
   }
 

@@ -188,21 +188,37 @@ export async function createPayment(params: PaymentRequest): Promise<PaymentResp
       errorMessage = errorText || errorMessage;
     }
 
-    // Log detailed error in development
-    if (typeof window === 'undefined' && !isProductionEnv()) {
+    // Always log the upstream failure, production included. This previously only ran
+    // outside production, which left real causes invisible exactly where they matter.
+    // The API key lives in headers, not the payload, so the payload is safe to log.
+    if (typeof window === 'undefined') {
       console.error('NOWPayments payment API error:', {
         status: response.status,
         statusText: response.statusText,
-        error: errorMessage,
+        upstreamMessage: errorMessage,
         details: errorDetails,
-        payload: payload,
+        payload,
       });
     }
-    
-    // Provide more helpful error messages
-    if (errorMessage.includes('validate address') || errorMessage.includes('address')) {
-      const addrErr = new Error(`Invalid wallet address. Please check that the ${params.payout_currency || 'payout'} address is correct and valid.`) as Error & { statusCode?: number };
+
+    // Only rewrite errors that are genuinely about the payout address being malformed.
+    // The previous check matched any message merely containing "address", which
+    // relabelled unrelated failures (unsupported pair, missing field, payin address
+    // problems) as a bad wallet address and hid the real cause from the user and logs.
+    const lower = errorMessage.toLowerCase();
+    const isAddressFormatError =
+      /invalid checksum/.test(lower) ||
+      /validate address/.test(lower) ||
+      /invalid address/.test(lower) ||
+      /address is invalid/.test(lower) ||
+      /bad_address/.test(lower);
+
+    if (isAddressFormatError) {
+      const addrErr = new Error(
+        `Invalid wallet address. Please check that the ${params.payout_currency || 'payout'} address is correct and valid.`
+      ) as Error & { statusCode?: number; upstreamMessage?: string };
       addrErr.statusCode = response.status;
+      addrErr.upstreamMessage = errorMessage;
       throw addrErr;
     }
 
@@ -444,3 +460,60 @@ export async function getExchangeLimits(
   }
 }
 
+
+/**
+ * Ask NOWPayments whether an address is valid for a currency.
+ *
+ * Local checksum validation catches corruption, but the provider is the authority on
+ * what it will actually accept for a given payout currency. Calling this before
+ * createPayment turns a late, vague rejection into a precise one, and surfaces the
+ * upstream reason instead of collapsing it into a generic message.
+ *
+ * Returns { valid: true } if the provider accepts it. Never throws on a network
+ * failure -- a validator outage must not block payments, since createPayment still
+ * performs the authoritative check.
+ */
+export async function validatePayoutAddress(
+  address: string,
+  currency: string
+): Promise<{ valid: boolean; reason?: string }> {
+  try {
+    const config = await getNowPaymentsConfig();
+
+    const response = await fetchWithTimeout(
+      `${config.baseUrl}/payout/validate-address`,
+      {
+        method: 'POST',
+        headers: {
+          'x-api-key': config.apiKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ address, currency: currency.toLowerCase() }),
+      },
+      NOWPAYMENTS_POST_TIMEOUT_MS
+    );
+
+    if (response.ok) return { valid: true };
+
+    const text = await response.text();
+    let reason = text;
+    try {
+      const parsed = JSON.parse(text);
+      reason = parsed.message || parsed.error || text;
+    } catch {
+      /* non-JSON body: use the raw text */
+    }
+
+    console.error('NOWPayments address validation rejected:', {
+      currency,
+      status: response.status,
+      upstreamMessage: reason,
+    });
+
+    return { valid: false, reason };
+  } catch (err: any) {
+    // Treat validator problems as inconclusive rather than as an invalid address.
+    console.error('NOWPayments address validation unavailable:', err?.message ?? err);
+    return { valid: true };
+  }
+}

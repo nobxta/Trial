@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createPayment, getPaymentStatus, getEstimatedPrice } from '@/lib/nowpayments';
+import { createPayment, getPaymentStatus, getEstimatedPrice, validatePayoutAddress } from '@/lib/nowpayments';
 import { getExchangeLimitsWithFallback, MIN_AMOUNT_BUFFER } from '@/lib/db-exchange-limits';
 import { getExchangeFeeSettings } from '@/lib/db-exchange-fees';
 import { applyFee } from '@/lib/pricing';
@@ -17,7 +17,20 @@ import { paymentLogger } from '@/lib/payment-logger';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    
+
+    // Normalise the destination address before anything reads it.
+    //
+    // Mobile browsers commonly append a space when pasting, and copied addresses can
+    // carry zero-width or bidirectional characters. validateCryptoAddress trims for its
+    // own check, so a padded address passed validation and was then forwarded verbatim
+    // to the provider, which rejected it -- a valid address failing for an invisible
+    // reason. Normalising once here keeps every downstream use consistent.
+    if (typeof body.destination === 'string') {
+      body.destination = body.destination
+        .replace(/[\u200B-\u200D\uFEFF\u2066-\u2069\u202A-\u202E]/g, '')
+        .trim();
+    }
+
     // Handle both exchange and payment orders
     const isExchange = body.type === "exchange" || body.send_asset;
     
@@ -147,6 +160,25 @@ export async function POST(request: NextRequest) {
       if (payoutMode === 'automatic') {
         paymentParams.payout_address = body.destination;
         paymentParams.payout_currency = body.receive_asset.toLowerCase();
+
+        // Confirm the provider accepts this address before creating the payment.
+        // Without it, a rejected address surfaces only after the order is built,
+        // as a generic failure that hides the real reason.
+        const addressCheck = await validatePayoutAddress(
+          paymentParams.payout_address,
+          paymentParams.payout_currency
+        );
+        if (!addressCheck.valid) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'INVALID_PAYOUT_ADDRESS',
+              message: `This ${paymentParams.payout_currency.toUpperCase()} address was rejected. Please check that it is correct and for the right network.`,
+              details: addressCheck.reason,
+            },
+            { status: 400 }
+          );
+        }
       }
 
       // Sandbox-specific: add case parameter from environment variable (ONLY in sandbox mode)
