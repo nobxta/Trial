@@ -369,3 +369,120 @@ ${domain}
   return { text: textVersion, html: htmlVersion };
 }
 
+
+export function getPasswordResetEmailTemplate(resetUrl: string, email: string) {
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const domain = baseUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
+
+  // Plain text version (important for spam filters)
+  const textVersion = `
+Reset your MintMove password
+
+We received a request to reset the password for ${email}.
+
+Click the link below to choose a new password:
+
+${resetUrl}
+
+This link will expire in 1 hour and can only be used once.
+
+If you did not request a password reset, you can safely ignore this email — your password will not change.
+
+Best regards,
+The MintMove Team
+${domain}
+  `.trim();
+
+  const htmlVersion = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>Reset Your Password - MintMove</title>
+  <!--[if mso]>
+  <style type="text/css">
+    body, table, td {font-family: Arial, sans-serif !important;}
+  </style>
+  <![endif]-->
+</head>
+<body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f5f5f5;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="max-width: 600px; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+
+          <!-- Header -->
+          <tr>
+            <td style="padding: 40px 40px 30px; text-align: center; background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); border-radius: 8px 8px 0 0;">
+              <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 600; letter-spacing: -0.5px;">MintMove</h1>
+              <p style="margin: 8px 0 0; color: #e0e7ff; font-size: 14px;">Secure Cryptocurrency Exchange</p>
+            </td>
+          </tr>
+
+          <!-- Content -->
+          <tr>
+            <td style="padding: 40px;">
+              <h2 style="margin: 0 0 20px; color: #1f2937; font-size: 24px; font-weight: 600; line-height: 1.3;">Reset your password</h2>
+
+              <p style="margin: 0 0 20px; color: #4b5563; font-size: 16px; line-height: 1.6;">
+                We received a request to reset the password for <strong style="color: #1f2937;">${email}</strong>.
+              </p>
+
+              <p style="margin: 0 0 30px; color: #4b5563; font-size: 16px; line-height: 1.6;">
+                Click the button below to choose a new password. You will be signed in automatically once it is set.
+              </p>
+
+              <!-- Button -->
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                <tr>
+                  <td align="center" style="padding: 0 0 30px;">
+                    <a href="${resetUrl}" style="display: inline-block; padding: 14px 36px; background-color: #2563eb; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; border-radius: 6px;">Reset password</a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin: 0 0 10px; color: #6b7280; font-size: 14px; line-height: 1.6;">
+                Or copy and paste this link into your browser:
+              </p>
+              <p style="margin: 0 0 30px; padding: 12px; background-color: #f9fafb; border-radius: 6px; color: #2563eb; font-size: 13px; line-height: 1.5; word-break: break-all;">
+                ${resetUrl}
+              </p>
+
+              <!-- Security notice -->
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #fef3c7; border-radius: 6px;">
+                <tr>
+                  <td style="padding: 16px 20px;">
+                    <p style="margin: 0; color: #92400e; font-size: 14px; line-height: 1.6;">
+                      This link expires in <strong>1 hour</strong> and can only be used once. Resetting your password will sign you out on all other devices.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin: 24px 0 0; color: #6b7280; font-size: 14px; line-height: 1.6;">
+                If you did not request this, you can safely ignore this email — your password will not change.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 24px 40px 32px; border-top: 1px solid #e5e7eb; text-align: center;">
+              <p style="margin: 0; color: #9ca3af; font-size: 13px; line-height: 1.6;">
+                &copy; ${new Date().getFullYear()} MintMove &middot; ${domain}
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `.trim();
+
+  return { text: textVersion, html: htmlVersion };
+}

@@ -1,7 +1,7 @@
 import nodemailer from 'nodemailer';
 import { NextRequest } from 'next/server';
 import { getBaseUrl } from './email-utils';
-import { getVerificationEmailTemplate } from './email-template';
+import { getVerificationEmailTemplate, getPasswordResetEmailTemplate } from './email-template';
 import { getEmailSetting } from './email-settings';
 import { getFromHeader, type EmailCategory } from './email-from';
 import { getSmptConfig } from './env';
@@ -287,3 +287,41 @@ export async function sendGenericEmail(
   return true;
 }
 
+
+/**
+ * Send a password reset email immediately via SMTP.
+ *
+ * Throws if SMTP is not configured or the send fails, so the caller can surface a
+ * real error instead of silently pretending the mail went out.
+ */
+export async function sendPasswordResetEmail(
+  email: string,
+  token: string,
+  request?: NextRequest
+): Promise<boolean> {
+  const baseUrl = getBaseUrl(request);
+  const resetUrl = `${baseUrl}/reset-password?token=${token}`;
+
+  const { text, html } = getPasswordResetEmailTemplate(resetUrl, email);
+
+  if (!getTransporter()) {
+    const error =
+      'SMTP transporter not configured. Set SMTP_USER and SMTP_PASS in your environment.';
+    console.error(`❌ Password reset email failed to ${email}: ${error}`);
+    throw new Error(error);
+  }
+
+  const result = await sendEmailViaSMTP({
+    to: email,
+    subject: 'Reset your MintMove password',
+    html,
+    text,
+    category: 'AUTH',
+  });
+
+  if (!result.success) {
+    throw new Error(`Failed to send password reset email: ${result.error}`);
+  }
+
+  return true;
+}

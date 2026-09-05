@@ -9,6 +9,14 @@ export interface User {
   verificationToken: string | null;
   /** When the verification token expires (ISO string). Null if no token or legacy. */
   verificationTokenExpiresAt: string | null;
+  /** SHA-256 hash of the password reset token. Raw token is never stored. */
+  resetTokenHash: string | null;
+  /** When the reset token expires (ISO string). Null if no active reset. */
+  resetTokenExpiresAt: string | null;
+  /** Last reset request (ISO string), used for the per-email cooldown. */
+  resetRequestedAt: string | null;
+  /** Last password change (ISO string). JWTs issued before this are stale. */
+  passwordChangedAt: string | null;
   createdAt: string;
 }
 
@@ -63,6 +71,10 @@ function mapUserRow(data: any): User {
     emailVerified: data.email_verified,
     verificationToken: data.verification_token,
     verificationTokenExpiresAt: data.verification_token_expires_at ?? null,
+    resetTokenHash: data.reset_token_hash ?? null,
+    resetTokenExpiresAt: data.reset_token_expires_at ?? null,
+    resetRequestedAt: data.reset_requested_at ?? null,
+    passwordChangedAt: data.password_changed_at ?? null,
     createdAt: data.created_at,
   };
 }
@@ -85,8 +97,33 @@ export async function getUserByVerificationToken(token: string): Promise<User | 
   return mapUserRow(data);
 }
 
+// Find user by password reset token hash
+export async function getUserByResetTokenHash(tokenHash: string): Promise<User | null> {
+  checkSupabase();
+
+  const { data, error } = await supabaseAdmin!
+    .from('users')
+    .select('*')
+    .eq('reset_token_hash', tokenHash)
+    .single();
+
+  if (error) {
+    if (isNotFoundError(error.code)) return null;
+    throw wrapDbError(error, 'getUserByResetTokenHash');
+  }
+  if (!data) return null;
+  return mapUserRow(data);
+}
+
 // Create new user
-export async function createUser(user: Omit<User, 'id' | 'createdAt'>): Promise<User> {
+// Reset/password-change columns are never set at signup, so they are excluded here
+// rather than forcing every caller to pass nulls.
+export async function createUser(
+  user: Omit<
+    User,
+    'id' | 'createdAt' | 'resetTokenHash' | 'resetTokenExpiresAt' | 'resetRequestedAt' | 'passwordChangedAt'
+  >
+): Promise<User> {
   checkSupabase();
   
   const { data, error } = await supabaseAdmin!
@@ -119,6 +156,10 @@ export async function updateUser(id: string, updates: Partial<User>): Promise<Us
   if (updates.emailVerified !== undefined) updateData.email_verified = updates.emailVerified;
   if (updates.verificationToken !== undefined) updateData.verification_token = updates.verificationToken;
   if (updates.verificationTokenExpiresAt !== undefined) updateData.verification_token_expires_at = updates.verificationTokenExpiresAt;
+  if (updates.resetTokenHash !== undefined) updateData.reset_token_hash = updates.resetTokenHash;
+  if (updates.resetTokenExpiresAt !== undefined) updateData.reset_token_expires_at = updates.resetTokenExpiresAt;
+  if (updates.resetRequestedAt !== undefined) updateData.reset_requested_at = updates.resetRequestedAt;
+  if (updates.passwordChangedAt !== undefined) updateData.password_changed_at = updates.passwordChangedAt;
 
   const { data, error } = await supabaseAdmin!
     .from('users')
@@ -167,9 +208,13 @@ export async function changeUserPassword(
   const { hashPassword } = await import('./auth');
   const hashedPassword = await hashPassword(newPassword);
 
+  // Floor to the second so a JWT minted in the same second is not treated as stale
+  // (jwt `iat` has one-second resolution).
+  const passwordChangedAt = new Date(Math.floor(Date.now() / 1000) * 1000).toISOString();
+
   const { error } = await supabaseAdmin!
     .from('users')
-    .update({ password: hashedPassword })
+    .update({ password: hashedPassword, password_changed_at: passwordChangedAt })
     .eq('id', userId);
 
   if (error) throw wrapDbError(error, 'changeUserPassword');
